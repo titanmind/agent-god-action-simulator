@@ -14,6 +14,12 @@ def test_white_noise_dimensions() -> None:
     assert data == data2
 
 
+def test_threshold_mask() -> None:
+    values = [[0.1, 0.9], [0.5, 0.95]]
+    mask = noise.threshold_mask(values, 0.8)
+    assert mask == [[False, True], [False, True]]
+
+
 def test_get_sprite_generates_and_caches(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(sprite_gen, "ASSETS_DIR", tmp_path)
     monkeypatch.setattr(sprite_gen, "_SPRITE_CACHE", {})
