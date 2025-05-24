@@ -82,15 +82,24 @@ class ActionExecutionSystem:
             
             # --- HANDLE GenerateAbilityAction ---
             elif isinstance(action, GenerateAbilityAction):
+                self.world.paused_for_angel = True
                 try:
                     generated_path = angel_generator.generate_ability(action.description)
-                    log_msg = f"Agent {action.actor} requested generation of ability: '{action.description}'. File created: {generated_path}"
+                    log_msg = (
+                        f"Agent {action.actor} requested generation of ability: '{action.description}'. "
+                        f"File created: {generated_path}"
+                    )
                     print(f"[Tick {tick}][ActionExec] {log_msg}")
                     # Optional: Log this as a game event too via world.event_log or similar
                     # self.world.event_log.append({"type": "ability_generated", "tick": tick, "actor": action.actor, "description": action.description, "path": str(generated_path)})
                 except Exception as e:
-                    error_msg = f"Error during ability generation for agent {action.actor} (desc: '{action.description}'): {e}"
+                    error_msg = (
+                        f"Error during ability generation for agent {action.actor} "
+                        f"(desc: '{action.description}'): {e}"
+                    )
                     print(f"[Tick {tick}][ActionExec ERROR] {error_msg}")
+                finally:
+                    self.world.paused_for_angel = False
             
             # --- HANDLE UseAbilityAction ---
             elif isinstance(action, UseAbilityAction):
