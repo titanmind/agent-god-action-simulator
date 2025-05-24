@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from typing import Any, Iterable, List
 
+from agent_world.systems.movement.movement_system import MovementSystem
+from agent_world.systems.movement.physics_system import PhysicsSystem
+
 
 class SystemsManager:
     """Maintain an ordered list of systems and tick them sequentially."""
@@ -15,10 +18,35 @@ class SystemsManager:
     # Registration API
     # ------------------------------------------------------------------
     def register(self, system: Any) -> None:
-        """Add ``system`` to the update list if not already present."""
+        """Add ``system`` to the update list if not already present.
 
-        if system not in self._systems:
-            self._systems.append(system)
+        Ensures that :class:`PhysicsSystem` always runs before
+        :class:`MovementSystem` regardless of registration order.
+        """
+
+        if system in self._systems:
+            return
+
+        if isinstance(system, PhysicsSystem):
+            for idx, s in enumerate(self._systems):
+                if isinstance(s, MovementSystem):
+                    self._systems.insert(idx, system)
+                    break
+            else:
+                self._systems.append(system)
+            return
+
+        if isinstance(system, MovementSystem):
+            for idx, s in enumerate(self._systems):
+                if isinstance(s, PhysicsSystem):
+                    # insert after existing physics system
+                    self._systems.insert(idx + 1, system)
+                    break
+            else:
+                self._systems.append(system)
+            return
+
+        self._systems.append(system)
 
     def unregister(self, system: Any) -> None:
         """Remove ``system`` if currently registered."""
