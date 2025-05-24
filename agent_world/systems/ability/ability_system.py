@@ -9,13 +9,19 @@ from importlib.util import module_from_spec, spec_from_loader
 from pathlib import Path
 import inspect
 from types import ModuleType
-from typing import Any, Dict, List, Sequence, Optional # Added Optional for type hint
+from typing import Any, Dict, List, Sequence, Optional
+
+from ...core.events import AbilityUseEvent
 
 from ...abilities.base import Ability
 from .cooldowns import CooldownManager
 import logging # For more structured logging
 
 logger = logging.getLogger(__name__)
+
+# Global queue storing events emitted by successful ability usage. This is
+# consumed by other systems such as perception.
+GLOBAL_ABILITY_EVENT_QUEUE: List[AbilityUseEvent] = []
 
 class AbilitySystem:
     """Load, hot-reload and execute ability modules."""
@@ -186,11 +192,25 @@ class AbilitySystem:
         try:
             ability.execute(caster_id, self.world, target_id)
             self.cooldowns.set_cooldown(caster_id, ability_name, ability.cooldown)
-            logger.info(f"Agent {caster_id} used ability '{ability_name}' (Target: {target_id}). Cooldown set to {ability.cooldown}.")
+
+            tm = getattr(self.world, "time_manager", None)
+            tick = tm.tick_counter if tm is not None else 0
+            event = AbilityUseEvent(
+                caster_id=caster_id,
+                ability_name=ability_name,
+                target_id=target_id,
+                tick=tick,
+            )
+            GLOBAL_ABILITY_EVENT_QUEUE.append(event)
+
+            logger.info(
+                f"Agent {caster_id} used ability '{ability_name}' (Target: {target_id}). "
+                f"Cooldown set to {ability.cooldown}."
+            )
             return True
         except Exception as e:
             logger.error(f"Error in execute for ability '{ability_name}' by agent {caster_id}: {e}", exc_info=True)
             return False
 
 
-__all__ = ["AbilitySystem"]
+__all__ = ["AbilitySystem", "GLOBAL_ABILITY_EVENT_QUEUE"]
