@@ -661,44 +661,166 @@ Outline:
 
 ---
 
-## Phase 17 · Docs, Tests & Release Prep
+## Phase 17 · Core Loop Integration & Physics Feedback
+*Objective: wire the real tick-loop end-to-end, add force/impulse handling, and
+surface collision data for AI & logs.*
 
-### Wave 17-A (2 parallel tasks)
+### Wave 17-A (3 parallel tasks — **do these first**)
 
 ```
 
 Task 17-A-1
-Developer **@dev-charlie**
+Developer **@dev-root**
 Files allowed:
-└─ README.md
-└─ AGENTS.md
-└─ docs/ (create if absent)
+└─ agent\_world/main.py                    (# SYSTEMS WIRING sections only)
+└─ agent\_world/core/systems\_manager.py
+└─ agent\_world/systems/**init**.py        (if needed for imports)
 Outline:
-• Flesh out full user + contributor docs, add “Running with OpenRouter” section, diagram of ECS flow, FAQ.
+• Instantiate `SystemsManager` inside `bootstrap()`.
+• Register systems *in deterministic order*:
+PhysicsSystem → MovementSystem → PerceptionSystem → CombatSystem
+→ Interaction systems (Pickup, Trading, Stealing, Crafting)
+→ AbilitySystem → AIReasoningSystem → **ActionExecutionSystem** (new).
+• Each tick: `systems_manager.update(world, tick)` **before**
+`TimeManager.sleep_until_next_tick()`.
 
 Task 17-A-2
+Developer **@dev-alice**
+Files allowed:
+└─ agent\_world/core/components/force.py   (new)
+└─ agent\_world/systems/ai/action\_execution\_system.py  (new)
+Outline:
+• `Force(dx:float, dy:float, ttl:int=1)` dataclass.
+Helper: `apply_force(entity_id, dx, dy, ttl=1)` which attaches/accumulates.
+• `ActionExecutionSystem` consumes `ActionQueue`, translating:
+• `MoveAction` → `apply_force(dx,dy)` (ttl = 1)
+• `AttackAction` → call `CombatSystem.attack()`.
+• Remove any Velocity component after applying a force to avoid duplication.
+
+Task 17-A-3
+Developer **@dev-bob**
+Files allowed:
+└─ agent\_world/systems/movement/physics\_system.py
+└─ agent\_world/systems/movement/movement\_system.py
+└─ agent\_world/persistence/event\_log.py
+Outline:
+• **PhysicsSystem**: integrate `Force` each tick → update `Physics.vx/vy`.
+If resulting move would hit `pathfinding.is_blocked()`, zero velocity and
+append `{"type":"collision","entity":eid,"pos":(x,y)}` to `EventLog`.
+• `MovementSystem` now queries the spatial index instead of raw loops,
+and emits `"move_blocked"` events when a requested tile is occupied.
+
+```
+
+### Wave 17-B (2 parallel tasks)
+
+```
+
+Task 17-B-1
+Developer **@dev-charlie**
+Files allowed:
+└─ agent\_world/core/world.py
+└─ agent\_world/main.py   (# SPATIAL BOOTSTRAP only)
+Outline:
+• Create a `SpatialGrid(cell_size=1)` in `bootstrap()`.
+• Populate it with existing entities (if any on load); update
+MovementSystem & PickupSystem loops to use `spatial_index.query_radius()`.
+
+Task 17-B-2
 Developer **@dev-dana**
 Files allowed:
-└─ tests/  (add new test modules only)
+└─ agent\_world/utils/observer.py
 Outline:
-• Bring coverage ≥ 95 % across new systems (hot\_reload, crafting, physics, palettes).
-• CI must pass with and without `.env`; mock internet as needed.
+• Warn once per run if any `[world].*_manager` is `None`.
+• Add `observer.log_event("collision", {...})` and
+`observer.log_event("move_blocked", {...})` helpers.
 
 ```
 
 ---
 
-### ✅ **Completion Criteria (Ph 17)**
-* Zero remaining “# Placeholder” comments.  
-* `python main.py` ticks at ≥ 10 Hz with ≥ 5 k entities.  
-* All CLI commands work.  
-* Persistent saves: full snapshot **and** incremental replay load without divergence.  
-* Unit-test coverage ≥ 95 %.  
-* Up-to-date docs & changelog.
+## Phase 18 · LLM Determinism & Test Harness
+*Objective: make AI predictable in CI, enable rapid offline iteration.*
+
+### Wave 18-A
+
+```
+
+Task 18-A-1
+Developer **@dev-elliot**
+Files allowed:
+└─ agent\_world/ai/llm/llm\_manager.py
+└─ agent\_world/config.yaml
+Outline:
+• Add `llm.mode = ["offline", "echo", "live"]` in YAML.
+• **offline** (default) → `<wait>`.
+• **echo** → returns the last non-empty line of the prompt.
+• **live**  → current behaviour (will still short-circuit in CI).
+• Environment variable `AW_LLM_MODE` overrides YAML.
+
+Task 18-A-2
+Developer **@dev-fay**
+Files allowed:
+└─ tests/conftest.py                (new)
+└─ tests/test\_ai\_deterministic.py   (new)
+Outline:
+• Provide pytest fixture `mock_llm(monkeypatch, mapping)` that replaces
+`LLMManager.request()` with a table lookup `{agent_id: reply}`.
+• Write integration test: create two agents, script replies
+`{1:"MOVE N", 2:"ATTACK 1"}`, run one tick → assert state changes.
+
+Task 18-A-3
+Developer **@dev-glen**
+Files allowed:
+└─ agent\_world/ai/angel/generator.py
+└─ tests/test\_angel\_generator.py    (new)
+Outline:
+• Modify generator to accept optional `stub_code` param (string) for tests.
+• Unit test creates a scaffold with a custom execute() body, hot-reloads via
+`AbilitySystem`, asserts behaviour matches scripted outcome.
+
+```
 
 ---
 
-## Phase 18 · GUI Rendering + Input
+## Phase 19 · Config & Memory Hygiene
+*Objective: lift hard-coded numbers to YAML and keep runtime caches bounded.*
+
+### Wave 19-A
+
+```
+
+Task 19-A-1
+Developer **@dev-hana**
+Files allowed:
+└─ config.yaml
+└─ agent\_world/utils/asset\_generation/sprite\_gen.py
+Outline:
+• Add section:
+
+```
+cache:
+  sprite_max: 10000        # max images in RAM
+  log_retention_mb: 50     # rotate event logs
+world:
+  max_entities: 8000
+```
+
+• Implement simple LRU eviction for `_SPRITE_CACHE`.
+
+Task 19-A-2
+Developer **@dev-ian**
+Files allowed:
+└─ agent\_world/persistence/event\_log.py
+Outline:
+• When file grows beyond `cache.log_retention_mb`, rotate
+`events_YYYYMMDD_HHMM.jsonl` (gzip after rotation).
+
+```
+
+---
+
+## Phase 20 · GUI Rendering + Input
 
 > Goal: replace the ASCII `/view` with an actual real-time window that
 > displays procedurally-generated sprites, UI overlays and supports pan / zoom / click.
@@ -708,11 +830,11 @@ Outline:
 * **pygame** (SDL-based, pip-installable, cross-platform, hardware-accelerated, light).  
 * Pillow already supplies the sprites → convert `PIL.Image` → `pygame.Surface`.
 
-### Wave 18-A (3 parallel tasks)
+### Wave 20-A (3 parallel tasks)
 
 ```
 
-Task 18-A-1
+Task 20-A-1
 Developer @dev-alice
 Files allowed:
 └─ agent\_world/gui/window\.py   (new)
@@ -726,7 +848,7 @@ Outline:
 • `Window.draw_text(text, x, y, colour=(255,255,255))` via `pygame.font`.
 • `Window.refresh()` flips the display and pumps `pygame.event.pump()`.
 
-Task 18-A-2
+Task 20-A-2
 Developer @dev-bob
 Files allowed:
 └─ agent\_world/gui/renderer.py   (new)
@@ -739,7 +861,7 @@ then call `window.draw_sprite()`.
 `pygame.event.get()`).
 • `Renderer.update(world)` is called once per tick **after** all systems run.
 
-Task 18-A-3
+Task 20-A-3
 Developer @dev-charlie
 Files allowed:
 └─ agent\_world/utils/cli/command\_parser.py
@@ -751,11 +873,11 @@ Outline:
 
 ```
 
-### Wave 18-B (after 18-A)
+### Wave 20-B (after 20-A)
 
 ```
 
-Task 18-B-1
+Task 20-B-1
 Developer @dev-dana
 Files allowed:
 └─ agent\_world/gui/input.py   (new)
@@ -769,7 +891,7 @@ F     – toggle live FPS overlay
 R     – reload abilities
 • Enqueue actions through the existing `ActionQueue` to keep determinism.
 
-Task 18-B-2
+Task 20-B-2
 Developer @dev-elliot
 Files allowed:
 └─ agent\_world/utils/asset\_generation/sprite\_gen.py
@@ -780,49 +902,29 @@ highlights a hovered/selected entity it requests the outlined version.
 
 ```
 
-
 ---
 
-## Phase 19 · Full Content Loop Polish
+## Phase 21 · Docs, Coverage & Release Prep
 
-*These tasks are mostly “fit & finish” – you may choose to tackle them piecemeal
-while QA is hammering the GUI.*
+### Wave 21-A
 
 ```
 
-Wave 19-A
-Task 19-A-1  (@dev-fay) – Particle / text popups on combat hits & crafting.
-Task 19-A-2  (@dev-glen) – Day/night colour-grading shader (just tint sprites).
-Wave 19-B
-Task 19-B-1  (@dev-hana) – Auto-spawn wandering NPCs every N ticks.
-Task 19-B-2  (@dev-ian) – Achievement/log panel (Tkinter Listbox docked right).
+Task 21-A-1  (@dev-charlie) – README, AGENTS.md, docs/\*
+Task 21-A-2  (@dev-dana)   – bring test coverage ≥ 95 %
+Task 21-A-3  (@dev-zoe)    – end-to-end smoke-test:
+• spin up world, run 5 ticks, assert at least one entity moved.
 
 ```
 
 ---
 
-## Phase 20 · Optional Extras (pick ’n mix)
-
-| Feature | Effort | Notes |
-|---------|--------|-------|
-| **WebSocket mirror** so spectators can watch from a browser | medium | 100 LOC aiohttp task; emits PNG sprite sheet + JSON world state |
-| **Replay GUI** (scrub through event log) | medium-high | Re-use the renderer; drive ticks from `replay.py` instead of live world |
-| **Scripting console** (`/py <expr>`) | low | Eval inside `utils.sandbox.run_in_sandbox` for safety |
-| **Mod-loader** (zipfile drop-ins) | medium | Load Python modules from `mods/`; same hot-reload thread can watch |
-| **Visual profiler** | low-medium | Use Tkinter `after()` to draw bar graph of last N tick times |
-
-None of the above are *required* for a “shippable” sandbox, but they add a lot
-of juice for almost no tech-risk because the foundations are already in place.
-
----
-
-
-### Completion Criteria
-
-* All phases merged without file-scope conflicts.
-* `python main.py` runs at 10 Hz, saves/restores state, agents move & fight, abilities hot-reload, CLI commands work.
-* Every major PR ships or updates **pytest** coverage; CI green before merge.
-
-Stay within your file boundaries; open a merge-blocker issue if another file must change. Happy hacking!
-
-
+### ✅ **Completion Criteria**
+* Main loop runs at ≥ 10 Hz with ≥ 5 k entities and full physics/LLM wiring.  
+* Force / collision events logged and visible to AI & observer.  
+* Deterministic CI via mock-LLM; “echo” mode useful for demos.  
+* `python main.py` with `/gui` shows sprites moving; CLI & GUI inputs control
+  the simulation; abilities hot-reload live.  
+* Persisted snapshots + incremental replays load without divergence.  
+* Unit-test coverage ≥ 95 %; docs & changelog up-to-date.
+```
