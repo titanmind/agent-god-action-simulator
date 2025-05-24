@@ -8,6 +8,7 @@ from typing import Any, Dict
 
 # Import components so their classes are discoverable during deserialisation.
 from ..core.components.known_abilities import KnownAbilitiesComponent  # noqa: F401
+from ..core.components.role import RoleComponent                       # noqa: F401
 
 
 def _class_path(obj: Any) -> str:
