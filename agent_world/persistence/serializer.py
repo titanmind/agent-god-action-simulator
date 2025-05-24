@@ -6,6 +6,9 @@ import importlib
 from dataclasses import asdict, is_dataclass
 from typing import Any, Dict
 
+# Import components so their classes are discoverable during deserialisation.
+from ..core.components.known_abilities import KnownAbilitiesComponent  # noqa: F401
+
 
 def _class_path(obj: Any) -> str:
     """Return the fully-qualified class path for ``obj``."""
