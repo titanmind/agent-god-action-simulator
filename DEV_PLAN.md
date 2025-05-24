@@ -45,7 +45,7 @@ Reinforcement:
 ### Wave 1-B (2 parallel tasks, after 1-A)
 
 ```
-Task 1-B-1
+✓ Task 1-B-1
 Developer @dev-dana
 Files allowed to edit:
   └─ agent_world/core/components/position.py
