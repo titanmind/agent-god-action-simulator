@@ -6,6 +6,9 @@ from pathlib import Path
 from typing import Any
 import threading
 import time
+import os
+
+from dotenv import load_dotenv
 
 import yaml
 
@@ -25,6 +28,9 @@ AUTO_SAVE_INTERVAL = 60.0  # seconds
 
 def bootstrap(config_path: str | Path = Path("config.yaml")) -> World:
     """Create the core ``World`` instance and attach managers."""
+    env_path = Path(".env")
+    if env_path.exists():
+        load_dotenv(env_path)
 
     with open(config_path, "r", encoding="utf-8") as fh:
         cfg: dict[str, Any] = yaml.safe_load(fh) or {}
