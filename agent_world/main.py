@@ -18,6 +18,7 @@ from .core.component_manager import ComponentManager
 from .core.time_manager import TimeManager
 from .systems.ai.actions import ActionQueue
 from .persistence.save_load import load_world, save_world
+from .persistence.incremental_save import start_incremental_save
 from .utils.cli.command_parser import poll_command
 from .utils.cli.commands import execute
 
@@ -97,6 +98,8 @@ def start_autosave(
 
     t = threading.Thread(target=_loop, daemon=True)
     t.start()
+    # PERSISTENCE HOOK: start incremental snapshots
+    start_incremental_save(world, path.parent / "increments")
 
 
 def main() -> None:
