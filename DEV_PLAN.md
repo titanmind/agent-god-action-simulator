@@ -229,7 +229,7 @@ Task outline:
 ### Wave 4-B (1 task, after 4-A)
 
 ```
-Task 4-B-1
+✓ Task 4-B-1
 Developer @dev-root
 Files allowed to edit:
   └─ agent_world/main.py   (# PERSISTENCE HOOK only)
