@@ -29,11 +29,16 @@ class PickupSystem:
     def update(self) -> None:
         """Transfer items found at the same position into inventories."""
 
-        if self.world.entity_manager is None or self.world.component_manager is None:
+        if (
+            self.world.entity_manager is None
+            or self.world.component_manager is None
+            or self.world.spatial_index is None
+        ):
             return
 
         em = self.world.entity_manager
         cm = self.world.component_manager
+        index = self.world.spatial_index
 
         # Iterate over actors that can carry items
         for entity_id in list(em.all_entities.keys()):
@@ -43,11 +48,8 @@ class PickupSystem:
                 continue
 
             # Look for items occupying the same position
-            for other_id in list(em.all_entities.keys()):
+            for other_id in index.query_radius((pos.x, pos.y), 0):
                 if other_id == entity_id:
-                    continue
-                other_pos = cm.get_component(other_id, Position)
-                if other_pos is None or (other_pos.x, other_pos.y) != (pos.x, pos.y):
                     continue
 
                 tag = cm.get_component(other_id, Tag)
@@ -68,3 +70,4 @@ class PickupSystem:
                 em.destroy_entity(other_id)
                 cm.remove_component(other_id, Position)
                 cm.remove_component(other_id, Tag)
+                index.remove(other_id)
