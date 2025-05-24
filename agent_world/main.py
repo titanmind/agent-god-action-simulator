@@ -35,9 +35,11 @@ except Exception:  # pragma: no cover - optional module
     ActionExecutionSystem = None  # type: ignore
 from .ai.llm.llm_manager import LLMManager
 from .persistence.save_load import load_world, save_world
+from .core.spatial.spatial_index import SpatialGrid
 from .persistence.incremental_save import start_incremental_save
 from .utils.cli.command_parser import poll_command
 from .utils.cli.commands import execute
+from .core.components.position import Position
 
 
 DEFAULT_SAVE_PATH = Path("saves/world_state.json.gz")
@@ -61,6 +63,7 @@ def bootstrap(config_path: str | Path = Path("config.yaml")) -> World:
     world.entity_manager = EntityManager()
     world.component_manager = ComponentManager()
     world.time_manager = TimeManager(tick_rate)
+    world.spatial_index = SpatialGrid(cell_size=1)
 
     # ------------------------------------------------------------------
     # SYSTEMS WIRING: instantiate manager and core systems
@@ -125,6 +128,16 @@ def load_or_bootstrap(
             world.time_manager = TimeManager(tick_rate)
         else:
             world.time_manager.tick_rate = tick_rate
+        # SPATIAL BOOTSTRAP: rebuild spatial index from loaded entities
+        world.spatial_index = SpatialGrid(cell_size=1)
+        if world.entity_manager and world.component_manager:
+            batch: list[tuple[int, tuple[int, int]]] = []
+            for eid in list(world.entity_manager.all_entities.keys()):
+                pos = world.component_manager.get_component(eid, Position)
+                if pos is not None:
+                    batch.append((eid, (pos.x, pos.y)))
+            if batch:
+                world.spatial_index.insert_many(batch)
         return world
 
     return bootstrap(config_path)
