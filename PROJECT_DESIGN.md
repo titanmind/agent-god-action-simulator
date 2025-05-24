@@ -1,24 +1,23 @@
-## Agent World Simulator — Project Design Document (v5)
+## Agent World Simulator — Project Design Document (vFuture)
 
-*For the implementation schedule & task breakdown see **DEV\_PLAN.md***
+*This document outlines the envisioned state of the Agent World Simulator, incorporating advanced AI-driven agent capabilities and dynamic world interactions.*
 
 ---
 
 ### 0 · Snapshot
 
-A **Python-only, single-process sandbox** that marries a lightweight ECS, async LLM-driven agents, deterministic replay and wholly-procedural art.
-Nothing to download, no containers, no micro-services – just run `python main.py`.
+A **Python-only, single-process sandbox** that marries a lightweight Entity-Component-System (ECS) architecture with sophisticated, LLM-driven autonomous agents. Features include dynamic ability generation via an "Angel" LLM, diverse NPC roles, observational learning, deterministic replay, and wholly-procedural art. The simulation is designed to be run with a simple `python main.py`, requiring no external services beyond an optional LLM API key.
 
 ---
 
 ## 1 · Core Philosophy
 
-* **Self-hosted hobby project** – skip enterprise-grade ops.
-* **Monolith over micro-services** – one interpreter, multiple threads / async tasks.
-* **Procedural everything** – sprites, maps, items; zero external assets.
-* **Deterministic by default** – CI runs with `llm.mode: offline`; unit-tests monkey-patch LLM replies.
-* **Test-driven, modular** – ≥ 95 % pytest coverage; split any file ≥ ≈ 300 LOC.
-* **Practical > perfect** – always ship a playable build before polishing.
+*   **Self-hosted hobby project** – prioritize simplicity and direct control over enterprise-grade operational complexity.
+*   **Monolith over micro-services** – maintain a single interpreter environment, utilizing threads and asyncio for concurrency.
+*   **Procedural everything** – all assets (sprites, maps, items, abilities) are generated at runtime or based on defined procedures, minimizing external dependencies.
+*   **Deterministic by default** – core simulation logic is deterministic. LLM interactions are managed for replayability, with offline modes for testing and CI.
+*   **Test-driven, modular** – high test coverage, with a codebase structured for clarity and maintainability.
+*   **Emergent Behavior Focus** – the primary goal is to create a sandbox where complex and interesting agent behaviors can emerge from well-defined rules and LLM-driven decision-making.
 
 ---
 
@@ -27,132 +26,135 @@ Nothing to download, no containers, no micro-services – just run `python main.
 ```
 main.py
 ├── Main Tick Loop (sync)
-│   ├─ SystemsManager.update()
-│   │   ├─ PhysicsSystem
-│   │   ├─ ActionExecutionSystem     ← consumes parsed MOVE/ATTACK/… actions
-│   │   └─ … others …
-│   └─ observer.record_tick()
-├── GUI Thread / Tick Hook  (pygame)
-│   ├─ Window.refresh()
-│   └─ Renderer.update(world)
-├── LLM Worker Pool (asyncio)          up to 8 concurrent completions
-├── Path-finding Pool                  optional CPU workers for A*
-├── Persistence Task                   snapshot every 60 s + incremental deltas
-└── Angel Task                         on-demand ability generation
+│   ├─ IF NOT world.paused_for_angel:
+│   │  ├─ SystemsManager.update()          // Processes all game systems
+│   │  │  ├─ PhysicsSystem
+│   │  │  ├─ ActionExecutionSystem      // Consumes agent actions
+│   │  │  ├─ AIReasoningSystem          // Handles agent LLM decisions & BT fallbacks
+│   │  │  ├─ AbilitySystem              // Manages ability loading & cooldowns
+│   │  │  └─ … other gameplay systems …
+│   │  └─ TimeManager.sleep_until_next_tick() // Advances game time
+│   └─ AngelSystem.process_pending_requests() // Runs if world.paused_for_angel IS True
+│      └─ (Manages LLM calls for ability generation, Vault search, sandboxed testing)
+├── GUI Thread / Tick Hook (pygame)
+│   └─ Renderer.update(world)             // Visualizes world state
+├── LLM Worker Pool (asyncio)              // For agent action decisions & Angel LLM calls
+├── Persistence Task                       // Incremental and full world state saves
+└── CLI Input Thread                       // For developer interaction
 ```
-
-*Soft budget* 100 ms per tick; overruns are logged by `observer`.
+*   **World Pause for Angel:** When an agent requests an ability, the main tick loop pauses normal system updates and dedicates processing to the `AngelSystem`.
+*   *Soft budget* 100 ms per game tick (when not paused for Angel); overruns logged.
 
 ---
 
-## 3 · LLM Integration
+## 3 · LLM Integration & The Angel System
 
-| Mode        | Description                                   | Config / Env                           |
-| ----------- | --------------------------------------------- | -------------------------------------- |
-| **offline** | Returns `"<wait>"` (CI default)               | `llm.mode: offline`                    |
-| **echo**    | Echoes the last non-empty line of prompt      | `llm.mode: echo` or `AW_LLM_MODE=echo` |
-| **live**    | Real OpenRouter call (falls back if net down) | `llm.mode: live`                       |
-
-* Prompt pipeline:
-  `world_view → prompt_builder → llm_manager.request() → action parsing → ActionQueue`.
-
-* Determinism: every `{prompt, completion}` is appended to `event_log.jsonl`.
-  Tests use `tests.conftest::mock_llm` to script replies per `agent_id`.
+*   **Agent Decision LLM:**
+    *   Used by `AIReasoningSystem` for agents capable of complex thought to decide actions based on their state, goals, and perception.
+    *   Modes: `offline` (scripted/wait), `echo`, `live` (OpenRouter).
+    *   Prompt Pipeline: `PerceptionSystem output → world_view → prompt_builder → LLMManager.request() → action parsing → ActionQueue`.
+*   **Angel System (Advanced Ability Generation & Granting):**
+    *   **Invocation:** Triggered by an agent's `GENERATE_ABILITY` action. Pauses the main world simulation.
+    *   **Responsibilities:**
+        1.  **Vault Search:** First, attempts to semantically match the agent's request against a curated "Vault" of pre-built, robust abilities (`abilities/vault/`). If a match is found, it grants this existing ability.
+        2.  **LLM-Powered Code Generation:** If no Vault match, the Angel System uses its own (potentially more powerful) LLM instance to write new Python ability code. This LLM is prompted with the request, relevant world constraints, and ability code templates/scaffolds.
+        3.  **Conceptual Sandboxed Testing:** The Angel's LLM is guided to "reason about" testing its generated code against API usage and functional goals.
+        4.  **Ability Granting:** Upon successful generation or Vault selection, the ability's class name is added to the requesting agent's `KnownAbilitiesComponent`.
+        5.  **Agent Turn Redo:** After the Angel completes and unpauses the world, the requesting agent immediately gets to re-evaluate its turn, now aware of the new ability, bypassing its normal LLM cooldown for this single re-evaluation.
+    *   **Output:** Generated Python ability files are saved to `agent_world/abilities/generated/`.
 
 ---
 
-## 4 · ECS Core
+## 4 · ECS Core & Agent Specialization
 
-### 4.1 Components (*canonical subset*)
+### 4.1 Key Components
 
 ```
-position.py        (x, y)
-physics.py         (vx, vy, mass, friction)
-force.py           (dx, dy, ttl)          # consumed each tick by PhysicsSystem
-health.py          (cur, max)
-inventory.py       (capacity, items)
-ai_state.py        (personality, goals)
-perception_cache.py(visible, last_tick)
-ownership.py       (owner_id)
-relationship.py    (faction, reputation)
+PositionComponent        (x, y)
+PhysicsComponent         (vx, vy, mass, friction)
+ForceComponent           (dx, dy, ttl)
+HealthComponent          (cur, max)
+InventoryComponent       (capacity, items)
+AIStateComponent         (personality, goals_list, pending_prompt_id, last_action_tick, last_bt_move_failed)
+PerceptionCacheComponent (visible_entities, visible_ability_uses, last_tick)
+KnownAbilitiesComponent  (known_ability_class_names_list) // NEW
+RoleComponent            (role_name, can_request_abilities, uses_llm, fixed_abilities_list) // NEW
+OwnershipComponent       (owner_id)
+RelationshipComponent    (faction, reputation_map)
 ```
 
 ### 4.2 Managers & Index
 
-* `EntityManager` – id → component-dict
-* `ComponentManager` – registration / add / remove helpers
-* `SpatialGrid` (hash grid, cell\_size 1); `Quadtree` wrapper for big worlds
+*   `EntityManager`: Manages entity lifecycles.
+*   `ComponentManager`: Manages component registration and entity-component association.
+*   `SpatialGrid`: Efficient spatial querying.
 
 ---
 
-## 5 · Gameplay Systems (deterministic order)
+## 5 · Gameplay Systems (Illustrative Order)
 
 ```
 systems/
-├ movement/            MovementSystem, pathfinding.py
-├ physics/             PhysicsSystem                 ← integrates forces & velocity
-├ action/              ActionExecutionSystem         ← sets Velocity or Force
-├ perception/          PerceptionSystem, LOS helpers
-├ combat/              CombatSystem, defense.py
-├ interaction/         pickup.py, trading.py, stealing.py, crafting.py
-├ ai/                  ai_reasoning_system.py, behaviour_tree.py
-└ ability/             ability_system.py, cooldowns.py
+├ movement/            MovementSystem, PhysicsSystem, pathfinding_utils
+├ perception/          PerceptionSystem (includes observation of ability use)
+├ interaction/         PickupSystem, TradingSystem, CraftingSystem
+├ ability/             AbilitySystem (loads all abilities, manages cooldowns globally)
+├ ai/                  AIReasoningSystem (differentiates by RoleComponent, manages agent LLM calls & BTs)
+│                      ActionExecutionSystem (processes ActionQueue, invokes AngelSystem, checks KnownAbilitiesComponent)
+│                      AngelSystem (handles ability requests, Vault, LLM generation, granting)
+├ combat/              CombatSystem
+└ … other systems …
 ```
-
-`SystemsManager.update()` walks this list each tick.
-
----
-
-## 6 · GUI & Input (pygame)
-
-* **Window** – opens a resizable window, caches `pygame.Surface` per sprite.
-* **Renderer** – draws all entities with `Position` + optional overlays (FPS, selection outlines, hit pop-ups).
-* **Input** – mouse picks entities; hotkeys: **Space** pause, **F** FPS overlay, **R** hot-reload abilities.
-* **Sprites** – 32 × 32 PNGs from `utils/asset_generation/sprite_gen.py`; outlined variants cached with separate keys.
+*   `ActionExecutionSystem` will verify an agent possesses an ability (via `KnownAbilitiesComponent`) before allowing `AbilitySystem.use()`.
 
 ---
 
-## 7 · LLM-Generated Abilities & Sandbox
+## 6 · GUI & Input
 
-* Base class `abilities.base.Ability` (`can_use`, `execute`, `energy_cost`, `cooldown`).
-* **Angel generator** writes scaffolds to `abilities/generated/*.py`.
-* **RestrictedPython** sandbox, 50 ms CPU, import-whitelist `{"math"}`.
-* Hot-reload each tick; cooldowns tracked per entity.
+*   **No Player Character:** The simulation focuses entirely on AI agents.
+*   **Enhanced Camera:** GUI offers robust camera controls (pan, zoom, follow selected agent).
+*   **Renderer:** Visualizes all entities, tilemap, and debug overlays.
+*   **CLI Primary Interaction:** Developer interaction for spawning, inspection, and direct commands via the CLI.
+
+---
+
+## 7 · Abilities: Vault, Generated, and Known
+
+*   **Base Class:** `abilities.base.Ability` (`can_use`, `execute`, `cost`, `cooldown`).
+*   **Ability Sources:**
+    *   `abilities/builtin/`: Core, developer-defined abilities always available.
+    *   `abilities/vault/`: Curated, complex, developer-defined abilities discoverable by the Angel System.
+    *   `abilities/generated/`: Abilities dynamically created by the Angel System's LLM.
+*   **Loading:** `AbilitySystem` loads all valid ability modules from these locations on startup and via hot-reloading for `generated/`.
+*   **Agent Access:** An agent can only *attempt to use* abilities whose class names are present in its `KnownAbilitiesComponent`.
+*   **Dynamic Code Generation:** The Angel System's LLM generates Python code for new abilities, which is then written to disk and loaded. No runtime `RestrictedPython` sandbox for *execution* of abilities once loaded (they become normal Python code), but the Angel's LLM is guided towards safe generation practices.
 
 ---
 
 ## 8 · Persistence & Replay
 
-* **Full snapshot** – `save_load.py` → `world_state.json.gz`.
-* **Incremental deltas** – `incremental_save.py` every 5 ticks; diff & gzip.
-* **Event log** – JSONL stream (`tick, type, data`); auto-rotated when size exceeds `cache.log_retention_mb`.
-* **Replay** – feeds events into fresh world; asserts deterministic equality.
+*   **Full Snapshot & Incremental Deltas:** Unchanged.
+*   **Event Log:** Critical for debugging and replay. Logs agent decisions, LLM prompts/responses (full text), Angel System actions, ability generations, and significant world events.
 
 ---
 
 ## 9 · Observability & CLI
 
-* `observer` keeps a rolling deque of 1 000 tick durations; prints FPS on demand.
-* CLI commands (non-blocking stdin):
-  `/pause  /step  /save  /reload abilities  /profile N  /gui  /fps  /spawn …`
-
-GUI & CLI both enqueue into `ActionQueue` to keep the simulation deterministic.
+*   **Enhanced CLI:** Robust commands for spawning agents with specific roles, inspecting `KnownAbilitiesComponent` and `RoleComponent`, triggering Angel requests manually for testing, and manipulating world state.
+*   **Detailed Logging:** Comprehensive logging of LLM interactions (full prompts and raw responses), Angel System decisions, and agent reasoning steps.
 
 ---
 
 ## 10 · Procedural Asset Generation & Caches
 
-* `sprite_gen.py` – colour from `entity_id`, HSV→RGB palettes per faction, optional outline.
-* LRU sprite cache (size from `cache.sprite_max`).
-* White-noise & Perlin helpers in `asset_generation/noise.py` seed resource nodes.
+*   Unchanged (sprites, map resources).
 
 ---
 
 ## 11 · Testing & Determinism
 
-* Pytest suites in `tests/`; CI runs with `llm.mode: offline`.
-* Fixtures in `tests/conftest.py` provide mock LLM replies and force deterministic timeouts.
-* End-to-end smoke test: spawn a world, run ≥ 5 ticks, assert at least one entity moved/injured, snapshot & replay.
+*   Focus on testing individual system logic, agent decision paths with mocked LLM/Angel responses, and the deterministic replay of event logs.
+*   End-to-end tests will verify scenarios like: agent identifies problem → requests ability → Angel grants/creates ability → agent uses new ability successfully.
 
 ---
 
@@ -162,30 +164,20 @@ GUI & CLI both enqueue into `ActionQueue` to keep the simulation deterministic.
 world:
   size:            [100, 100]
   tick_rate:       10
-  max_entities:    8000
+  # paused_for_angel_timeout_seconds: 60 // New: Max time world can be paused for Angel
 
 llm:
-  mode:            offline        # offline | echo | live
-  provider:        openrouter
-  model:           openai/gpt-4o
-  max_concurrent:  8
-  timeout:         2.0
+  agent_decision_model:  <model_identifier_for_agents>
+  angel_generation_model: <model_identifier_for_angel_code_gen> // Potentially different/larger
+  # ... other common LLM settings ...
 
-window:
-  size:            [800, 600]
-
-cache:
-  sprite_max:      10000          # in-RAM sprite surfaces
-  log_retention_mb: 50            # rotate event logs when bigger
-
-paths:
-  saves:           "./saves"
-  abilities:       "./abilities/generated"
+# paths:
+  # abilities_vault: "./agent_world/abilities/vault" // New path
+  # ... existing paths ...
 ```
 
 ---
 
-### 13 · Roadmap Alignment
+### 13 · Vision Summary
 
-*Phase 0-16 delivered the ECS, physics, LLM hooks & CLI.*
-*Phase 17 → 21 (see DEV\_PLAN.md) add deterministic LLM modes, config hygiene, pygame GUI, input → ActionQueue, and final docs/tests.*
+The simulator evolves into a dynamic ecosystem where AI agents not only act based on LLM-driven reasoning but can also actively expand their capabilities through interaction with a sophisticated "Angel" system. This Angel can intelligently grant pre-existing complex abilities from a Vault or orchestrate the LLM-powered generation of entirely new, situationally relevant abilities. Different NPC roles with fixed or LLM-driven behaviors and distinct skill sets create a richer world. The removal of a dedicated player entity sharpens the focus on emergent AI-vs-AI and AI-vs-environment interactions, observed and guided through enhanced CLI and logging. The core remains a testable, deterministic-as-possible Python sandbox for exploring advanced AI agent concepts.

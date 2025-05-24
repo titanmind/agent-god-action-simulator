@@ -15,7 +15,7 @@ repository that follows the **DEV_PLAN.md** process.
 ## 2 · Understand the Project
 
 * Open **PROJECT_DESIGN.md** (root of the repo).  
-* Here you will find the overall project design notes, to give you more context of the entire project and how it works.
+* Here you will find the overall project design notes, to give you more context of the entire project and what the finished version looks like.  This is the ideal we are constantly building towards.
 
 ---
 
