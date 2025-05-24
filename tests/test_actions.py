@@ -8,6 +8,8 @@ from agent_world.systems.ai.actions import (
     ActionQueue,
     MoveAction,
     AttackAction,
+    LogAction,
+    IdleAction,
 )
 
 
@@ -39,3 +41,11 @@ def test_action_queue_enqueues_valid_actions():
     action = q.pop()
     assert isinstance(action, MoveAction)
     assert (action.dx, action.dy) == (1, 0)
+
+
+def test_parse_log_and_idle_actions() -> None:
+    log = parse_action(3, "LOG hello world")
+    idle = parse_action(4, "IDLE")
+    assert isinstance(log, LogAction) and log.message == "hello world"
+    assert log.actor == 3
+    assert isinstance(idle, IdleAction) and idle.actor == 4

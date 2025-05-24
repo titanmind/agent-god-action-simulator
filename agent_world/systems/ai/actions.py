@@ -30,8 +30,20 @@ class AttackAction:
     actor: int
     target: int
 
+@dataclass(slots=True)
+class LogAction:
+    """Log a message to the console."""
 
-Action = Union[MoveAction, AttackAction]
+    actor: int
+    message: str
+
+@dataclass(slots=True)
+class IdleAction:
+    """No-op action used for a single tick."""
+
+    actor: int
+
+Action = Union[MoveAction, AttackAction, LogAction, IdleAction]
 
 # Map simple cardinal directions to deltas
 _DIRECTION_MAP: dict[str, tuple[int, int]] = {
@@ -53,21 +65,28 @@ def parse_action(actor: int, text: str) -> Optional[Action]:
     erroneous LLM output is safely ignored.
     """
 
-    parts = text.strip().split()
+    parts = text.strip().split(maxsplit=1)
     if not parts:
         return None
 
     cmd = parts[0].upper()
-    if cmd == "MOVE" and len(parts) == 2:
-        direction = parts[1].upper()
+    arg = parts[1] if len(parts) > 1 else ""
+    if cmd == "MOVE" and arg:
+        direction = arg.upper()
         delta = _DIRECTION_MAP.get(direction)
         if delta is None:
             return None
         dx, dy = delta
         return MoveAction(actor=actor, dx=dx, dy=dy)
 
-    if cmd == "ATTACK" and len(parts) == 2 and parts[1].isdigit():
-        return AttackAction(actor=actor, target=int(parts[1]))
+    if cmd == "ATTACK" and arg.isdigit():
+        return AttackAction(actor=actor, target=int(arg))
+
+    if cmd == "LOG" and arg:
+        return LogAction(actor=actor, message=arg)
+
+    if cmd == "IDLE" and not arg:
+        return IdleAction(actor=actor)
 
     return None
 
@@ -98,10 +117,11 @@ class ActionQueue:
     def __len__(self) -> int:  # pragma: no cover - trivial
         return len(self._queue)
 
-
 __all__ = [
     "MoveAction",
     "AttackAction",
+    "LogAction",
+    "IdleAction",
     "Action",
     "ActionQueue",
     "parse_action",

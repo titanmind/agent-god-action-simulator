@@ -4,7 +4,15 @@ from __future__ import annotations
 
 from typing import Any
 
-from .actions import ActionQueue, MoveAction, AttackAction
+import logging
+
+from .actions import (
+    ActionQueue,
+    MoveAction,
+    AttackAction,
+    LogAction,
+    IdleAction,
+)
 from ..combat.combat_system import CombatSystem
 from ..movement.movement_system import Velocity
 from ...core.components.force import apply_force
@@ -38,6 +46,12 @@ class ActionExecutionSystem:
                 cm.remove_component(action.actor, Velocity)
             elif isinstance(action, AttackAction):
                 self.combat.attack(action.actor, action.target, tick=tick)
+            elif isinstance(action, LogAction):
+                print(action.message)
+            elif isinstance(action, IdleAction):
+                pass
+            else:
+                logging.warning("Unknown action %r; treating as idle", action)
 
 
 __all__ = ["ActionExecutionSystem"]
