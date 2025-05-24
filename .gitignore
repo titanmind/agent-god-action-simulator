@@ -24,6 +24,7 @@ __pycache__/
 env/
 venv/
 *.egg-info/
+.venv/
 
 # === Logs ===
 *.log
