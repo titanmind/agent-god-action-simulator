@@ -196,6 +196,32 @@ Task outline:
   • Parse action strings "MOVE N" "ATTACK id" into world-safe action objects and queue for execution in subsequent ticks.
 ```
 
+### Wave 3-C · Env-Config Integration ✨
+
+Goal: make the OpenRouter API key & default model discoverable from a local .env file (loaded via python-dotenv) while keeping the current “stub-returns-<wait>” behaviour for Codex agents that run in the sandbox with no outbound network.
+
+Task 3-C-1
+Field	Value
+Developer	@dev-zoe
+Files allowed to edit	* agent_world/ai/llm/llm_manager.py
+* agent_world/main.py (BOOTSTRAP section only)
+* pyproject.toml ([project] dependencies)
+* README.md (brief usage note)
+Outline	1. Add python-dotenv to pyproject.toml and document the install line.
+2. Load env-vars once at bootstrap:
+  • in main.bootstrap(), call dotenv.load_dotenv() if a .env file exists.
+  • respect two variables: OPENROUTER_API_KEY, OPENROUTER_MODEL.
+3. Wire into LLMManager:
+  • accept api_key and model kwargs; default to the env-vars.
+  • if either is missing or the runtime has no internet (detectable via a simple socket.gethostbyname("openrouter.ai") wrapped in try/except) → keep returning "<wait>" exactly as today (no functional change for Codex agents).
+4. Update README with a “Getting Started – LLM access” blurb that shows a sample .env:
+bash<br>OPENROUTER_API_KEY=sk-…<br>OPENROUTER_MODEL=openai/gpt-4o<br>
+Reinforcement	No other files may be touched. Unit tests must still pass with and without a .env present. Codex CI lacks web; therefore tests must mock any network call.
+Acceptance Criteria	* Running python main.py on a dev machine that has a filled-in .env should print “LLM online: <model>”.
+* In CI / sandbox (no .env or outbound net) behaviour is unchanged and unit tests remain green.
+Notes for reviewers	Codex build agents still cannot reach OpenRouter, so this task should not attempt a real HTTP request in tests—mock or short-circuit instead.
+
+
 ---
 
 ## Phase 4 · Persistence & Replay
