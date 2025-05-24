@@ -17,6 +17,23 @@ from .core.entity_manager import EntityManager
 from .core.component_manager import ComponentManager
 from .core.time_manager import TimeManager
 from .systems.ai.actions import ActionQueue
+from .core.systems_manager import SystemsManager
+from .systems.movement.physics_system import PhysicsSystem
+from .systems.movement.movement_system import MovementSystem
+from .systems.perception.perception_system import PerceptionSystem
+from .systems.combat.combat_system import CombatSystem
+from .systems.interaction.pickup import PickupSystem
+from .systems.interaction.trading import TradingSystem
+from .systems.interaction.stealing import StealingSystem
+from .systems.interaction.crafting import CraftingSystem
+from .systems.ability.ability_system import AbilitySystem
+from .systems.ai.ai_reasoning_system import AIReasoningSystem
+
+try:  # Optional system may not exist yet
+    from .systems.ai.action_execution_system import ActionExecutionSystem
+except Exception:  # pragma: no cover - optional module
+    ActionExecutionSystem = None  # type: ignore
+from .ai.llm.llm_manager import LLMManager
 from .persistence.save_load import load_world, save_world
 from .persistence.incremental_save import start_incremental_save
 from .utils.cli.command_parser import poll_command
@@ -44,8 +61,44 @@ def bootstrap(config_path: str | Path = Path("config.yaml")) -> World:
     world.entity_manager = EntityManager()
     world.component_manager = ComponentManager()
     world.time_manager = TimeManager(tick_rate)
-    # Systems manager will be implemented later; placeholder list for now
-    world.systems_manager = []
+
+    # ------------------------------------------------------------------
+    # SYSTEMS WIRING: instantiate manager and core systems
+    # ------------------------------------------------------------------
+    world.systems_manager = SystemsManager()
+    sm = world.systems_manager
+
+    physics = PhysicsSystem(world)
+    movement = MovementSystem(world)
+    perception = PerceptionSystem(world)
+    combat = CombatSystem(world)
+    pickup = PickupSystem(world)
+    trading = TradingSystem(world)
+    stealing = StealingSystem(world)
+    crafting = CraftingSystem(world)
+    ability = AbilitySystem(world)
+
+    llm = LLMManager()
+    actions = ActionQueue()
+    ai_reasoning = AIReasoningSystem(world, llm, actions)
+
+    sm.register(physics)
+    sm.register(movement)
+    sm.register(perception)
+    sm.register(combat)
+    sm.register(pickup)
+    sm.register(trading)
+    sm.register(stealing)
+    sm.register(crafting)
+    sm.register(ability)
+    sm.register(ai_reasoning)
+
+    if ActionExecutionSystem is not None:
+        sm.register(ActionExecutionSystem(world, actions, combat))
+
+    # ------------------------------------------------------------------
+    # END SYSTEMS WIRING
+    # ------------------------------------------------------------------
 
     return world
 
@@ -121,6 +174,8 @@ def main() -> None:
             step_once = state.get("step", False) or step_once
         if not paused or step_once:
             print(f"tick {tm.tick_counter}")
+            if world.systems_manager:
+                world.systems_manager.update(world, tm.tick_counter)
             tm.sleep_until_next_tick()
             step_once = False
         else:  # idle while paused
