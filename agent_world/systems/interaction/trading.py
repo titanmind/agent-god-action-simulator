@@ -7,12 +7,20 @@ from typing import Any
 from ...core.components.position import Position
 from ...core.components.inventory import Inventory
 
+try:  # Relationship component may not yet exist
+    from ...core.components.relationship import Relationship  # type: ignore
+except Exception:  # pragma: no cover - fallback for tests
+
+    class Relationship:  # type: ignore
+        reputation: int = 0
+
 
 class TradingSystem:
-    """Swap the first item between co-located inventories."""
+    """Swap the first item between co-located inventories and reward traders."""
 
-    def __init__(self, world: Any) -> None:
+    def __init__(self, world: Any, reward: int = 1) -> None:
         self.world = world
+        self.reward = reward
 
     # ------------------------------------------------------------------
     # Update loop
@@ -48,6 +56,12 @@ class TradingSystem:
                 item_b = inv_b.items.pop(0)
                 inv_a.items.append(item_b)
                 inv_b.items.append(item_a)
+                rel_a = cm.get_component(a, Relationship)
+                if rel_a is not None and hasattr(rel_a, "reputation"):
+                    rel_a.reputation += self.reward
+                rel_b = cm.get_component(b, Relationship)
+                if rel_b is not None and hasattr(rel_b, "reputation"):
+                    rel_b.reputation += self.reward
                 return
 
 
