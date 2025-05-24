@@ -28,3 +28,23 @@ def patch_ability_module_name():
     ability_system.AbilitySystem._module_name = staticmethod(_module_name)
     yield
     ability_system.AbilitySystem._module_name = original
+
+
+@pytest.fixture()
+def mock_llm(monkeypatch):
+    """Return a helper to stub ``LLMManager.request`` for given replies."""
+
+    def _apply(mapping: dict[int, str]) -> None:
+        def _request(self, prompt: str, timeout: float | None = None) -> str:
+            for agent_id, reply in mapping.items():
+                if f"Agent {agent_id}" in prompt:
+                    return reply
+            return "<wait>"
+
+        monkeypatch.setattr(
+            "agent_world.ai.llm.llm_manager.LLMManager.request",
+            _request,
+            raising=False,
+        )
+
+    return _apply
