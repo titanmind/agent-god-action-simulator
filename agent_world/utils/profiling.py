@@ -6,6 +6,9 @@ import cProfile
 import pstats
 from pathlib import Path
 from typing import Callable
+import time
+
+from .observer import record_tick
 
 
 def profile_ticks(
@@ -33,8 +36,12 @@ def profile_ticks(
     path = Path(out_path)
     profiler = cProfile.Profile()
     profiler.enable()
+    last = time.perf_counter()
     for _ in range(n):
         tick_callback()
+        now = time.perf_counter()
+        record_tick(now - last)
+        last = now
     profiler.disable()
     profiler.dump_stats(str(path))
     return pstats.Stats(profiler)

@@ -13,11 +13,16 @@ from ..persistence.serializer import world_to_dict
 _TICK_HISTORY_LEN = 1000
 _tick_durations: Deque[float] = deque(maxlen=_TICK_HISTORY_LEN)
 
+# Whether to print FPS every tick when recording durations
+_live_fps: bool = False
+
 
 def record_tick(duration: float) -> None:
     """Append a tick ``duration`` in seconds to the rolling history."""
 
     _tick_durations.append(duration)
+    if _live_fps:
+        print_fps()
 
 
 def print_fps() -> None:
@@ -35,6 +40,14 @@ def print_fps() -> None:
     print(msg)
 
 
+def toggle_live_fps() -> bool:
+    """Toggle live FPS printing. Returns ``True`` if enabled after toggle."""
+
+    global _live_fps
+    _live_fps = not _live_fps
+    return _live_fps
+
+
 def dump_state(world: "World", path: str | Path) -> None:
     """Write ``world`` state to ``path`` as JSON for offline inspection."""
 
@@ -49,6 +62,7 @@ def dump_state(world: "World", path: str | Path) -> None:
 __all__ = [
     "record_tick",
     "print_fps",
+    "toggle_live_fps",
     "dump_state",
     "_tick_durations",
 ]
