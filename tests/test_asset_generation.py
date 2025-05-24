@@ -22,7 +22,7 @@ def test_threshold_mask() -> None:
 
 def test_get_sprite_generates_and_caches(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(sprite_gen, "ASSETS_DIR", tmp_path)
-    monkeypatch.setattr(sprite_gen, "_SPRITE_CACHE", {})
+    monkeypatch.setattr(sprite_gen, "_SPRITE_CACHE", sprite_gen.OrderedDict())
 
     img1 = sprite_gen.get_sprite(7)
     assert isinstance(img1, Image.Image)
@@ -30,3 +30,20 @@ def test_get_sprite_generates_and_caches(tmp_path: Path, monkeypatch) -> None:
 
     img2 = sprite_gen.get_sprite(7)
     assert img1 is img2
+
+
+def test_sprite_cache_eviction(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(sprite_gen, "ASSETS_DIR", tmp_path)
+    monkeypatch.setattr(sprite_gen, "MAX_SPRITES", 2)
+    sprite_gen._SPRITE_CACHE.clear()
+
+    sprite_gen.get_sprite(1)
+    sprite_gen.get_sprite(2)
+    # Access first sprite again to mark as recently used
+    sprite_gen.get_sprite(1)
+    sprite_gen.get_sprite(3)
+
+    assert len(sprite_gen._SPRITE_CACHE) == 2
+    assert 1 in sprite_gen._SPRITE_CACHE
+    assert 3 in sprite_gen._SPRITE_CACHE
+    assert 2 not in sprite_gen._SPRITE_CACHE

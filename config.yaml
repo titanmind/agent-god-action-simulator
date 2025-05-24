@@ -1,6 +1,11 @@
 world:
   size: [100, 100]
   tick_rate: 10
+  max_entities: 8000
 
 llm:
   mode: offline
+
+cache:
+  sprite_max: 10000      # max images in RAM
+  log_retention_mb: 50   # event-log rotation
