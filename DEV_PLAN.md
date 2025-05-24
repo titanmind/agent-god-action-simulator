@@ -258,7 +258,7 @@ Files allowed to edit:
 Task outline:
   • run_in_sandbox(code_str) with RestrictedPython, 50 ms timeout, no imports beyond math.
 
-Task 5-A-3
+✓ Task 5-A-3
 Developer @dev-charlie
 Files allowed to edit:
   └─ agent_world/ai/angel/generator.py
