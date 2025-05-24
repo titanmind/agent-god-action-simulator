@@ -2,17 +2,23 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Dict, Iterator
+from typing import Any, Dict, Iterator, List
 
 
-def append_event(path: str | Path, tick: int, event_type: str, data: Any) -> None:
-    """Append an event to ``path`` as a JSONL record."""
+def append_event(
+    dest: str | Path | List[Dict[str, Any]], tick: int, event_type: str, data: Any
+) -> None:
+    """Append an event to ``dest`` which may be a path or in-memory list."""
 
-    p = Path(path)
+    event = {"tick": tick, "event_type": event_type, "data": data}
+    if isinstance(dest, list):
+        dest.append(event)
+        return
+
+    p = Path(dest)
     if not p.parent.exists():
         p.parent.mkdir(parents=True, exist_ok=True)
 
-    event = {"tick": tick, "event_type": event_type, "data": data}
     with p.open("a", encoding="utf-8") as fh:
         fh.write(json.dumps(event, ensure_ascii=False) + "\n")
 

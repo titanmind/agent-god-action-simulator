@@ -57,6 +57,7 @@ from agent_world.core.spatial.spatial_index import SpatialGrid
 from agent_world.systems.movement.movement_system import MovementSystem, Velocity
 from agent_world.core.components.physics import Physics
 import pytest
+from typing import Any
 
 
 def test_velocity_dataclass():
@@ -107,6 +108,32 @@ def test_movement_blocked_by_obstacle():
     assert (pos.x, pos.y) == (0, 0)
     assert world.spatial_index.query_radius((0, 0), 0) == [e]
     clear_obstacles()
+
+
+def test_move_blocked_event_when_occupied():
+    world = World((3, 3))
+    world.entity_manager = EntityManager()
+    world.component_manager = ComponentManager()
+    world.spatial_index = SpatialGrid(cell_size=1)
+
+    log: list[dict[str, Any]] = []
+    movement = MovementSystem(world, event_log=log)
+
+    mover = world.entity_manager.create_entity()
+    blocker = world.entity_manager.create_entity()
+
+    world.component_manager.add_component(mover, Position(0, 0))
+    world.component_manager.add_component(mover, Velocity(1, 0))
+    world.spatial_index.insert(mover, (0, 0))
+
+    world.component_manager.add_component(blocker, Position(1, 0))
+    world.spatial_index.insert(blocker, (1, 0))
+
+    movement.update()
+
+    pos = world.component_manager.get_component(mover, Position)
+    assert (pos.x, pos.y) == (0, 0)
+    assert log[-1] == {"type": "move_blocked", "entity": mover, "pos": (1, 0)}
 
 
 def test_physics_dataclass():
