@@ -39,6 +39,7 @@ from .core.spatial.spatial_index import SpatialGrid
 from .persistence.incremental_save import start_incremental_save
 from .utils.cli.command_parser import poll_command
 from .utils.cli.commands import execute
+from .gui.renderer import Renderer
 from .core.components.position import Position
 
 
@@ -176,19 +177,24 @@ def main() -> None:
     tm = world.time_manager
     actions = ActionQueue()  # AI HOOK: queue for parsed actions
     assert tm is not None
+    renderer = Renderer()
     paused = False
     step_once = False
+    gui_enabled = False
     for _ in range(10):
         cmd = poll_command()
         if cmd:
-            state = {"paused": paused, "step": False}
+            state = {"paused": paused, "step": False, "gui_enabled": gui_enabled}
             execute(cmd.name, cmd.args, world, state)
             paused = state["paused"]
             step_once = state.get("step", False) or step_once
+            gui_enabled = state.get("gui_enabled", gui_enabled)
         if not paused or step_once:
             print(f"tick {tm.tick_counter}")
             if world.systems_manager:
                 world.systems_manager.update(world, tm.tick_counter)
+            if gui_enabled:
+                renderer.update(world)
             tm.sleep_until_next_tick()
             step_once = False
         else:  # idle while paused
