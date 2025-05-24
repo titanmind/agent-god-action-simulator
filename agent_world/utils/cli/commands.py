@@ -5,6 +5,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict, Iterable
 
+from ...core.components.position import Position
+from ...core.components.health import Health
+from ...core.components.inventory import Inventory
+from ...systems.interaction.pickup import Tag
+
 from ...persistence.save_load import save_world
 from ..observer import install_tick_observer, toggle_live_fps
 
@@ -56,6 +61,45 @@ def profile(world: Any, ticks: int) -> None:
     profile_ticks(world, ticks)
 
 
+def spawn(world: Any, kind: str) -> int | None:
+    """Spawn an entity of ``kind`` and return its ID."""
+
+    em = getattr(world, "entity_manager", None)
+    cm = getattr(world, "component_manager", None)
+    if em is None or cm is None:
+        return None
+
+    ent = em.create_entity()
+    if kind == "npc":
+        cm.add_component(ent, Position(0, 0))
+        cm.add_component(ent, Health(cur=10, max=10))
+        cm.add_component(ent, Inventory(capacity=4))
+    elif kind == "item":
+        cm.add_component(ent, Position(0, 0))
+        cm.add_component(ent, Tag("item"))
+    elif kind == "ability":
+        cm.add_component(ent, Position(0, 0))
+        cm.add_component(ent, Tag("ability"))
+    else:
+        em.destroy_entity(ent)
+        return None
+    return ent
+
+
+def debug(world: Any, entity_id: int) -> None:
+    """Print a dump of components for ``entity_id``."""
+
+    em = getattr(world, "entity_manager", None)
+    cm = getattr(world, "component_manager", None)
+    if em is None or cm is None or not em.has_entity(entity_id):
+        print(f"Entity {entity_id} not found")
+        return
+
+    comps = cm._components.get(entity_id, {})
+    print(f"Entity {entity_id} components:")
+    for name, comp in comps.items():
+        print(f"  {name}: {comp}")
+
 def fps(world: Any, state: Dict[str, Any]) -> None:
     """Toggle live FPS printing for the tick loop."""
 
@@ -63,6 +107,7 @@ def fps(world: Any, state: Dict[str, Any]) -> None:
     if tm is not None:
         install_tick_observer(tm)
     state["fps"] = toggle_live_fps()
+
 
 
 def execute(command: str, args: list[str], world: Any, state: Dict[str, Any]) -> None:
@@ -78,6 +123,15 @@ def execute(command: str, args: list[str], world: Any, state: Dict[str, Any]) ->
         reload_abilities(world)
     elif command == "profile":
         profile(world, int(args[0]) if args else 1)
+    elif command == "spawn" and args:
+        spawn(world, args[0])
+    elif command == "debug" and args:
+        try:
+            ent = int(args[0])
+        except ValueError:
+            print(f"Invalid entity id: {args[0]}")
+        else:
+            debug(world, ent)
     elif command == "fps":
         fps(world, state)
 
@@ -88,6 +142,8 @@ __all__ = [
     "save",
     "reload_abilities",
     "profile",
+    "spawn",
+    "debug",
     "fps",
     "execute",
 ]

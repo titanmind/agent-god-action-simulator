@@ -4,6 +4,10 @@ from pathlib import Path
 import pytest
 
 from agent_world.core.systems_manager import SystemsManager
+from agent_world.core.world import World
+from agent_world.core.entity_manager import EntityManager
+from agent_world.core.component_manager import ComponentManager
+from agent_world.core.components.position import Position
 from agent_world.utils.cli.command_parser import parse_command
 from agent_world.utils.cli import commands
 
@@ -68,3 +72,29 @@ def test_profile_passes_args(monkeypatch):
     world = object()
     commands.profile(world, 5)
     assert called == {"world": world, "ticks": 5}
+
+
+def _make_world():
+    w = World((5, 5))
+    w.entity_manager = EntityManager()
+    w.component_manager = ComponentManager()
+    return w
+
+
+def test_spawn_npc_and_item():
+    world = _make_world()
+    npc = commands.spawn(world, "npc")
+    item = commands.spawn(world, "item")
+    assert npc is not None and item is not None
+    cm = world.component_manager
+    assert cm.get_component(npc, Position) is not None
+    assert cm.get_component(item, Position) is not None
+
+
+def test_debug_outputs_components(capsys):
+    world = _make_world()
+    ent = commands.spawn(world, "npc")
+    commands.debug(world, ent)
+    out = capsys.readouterr().out
+    assert "Position" in out
+
