@@ -923,14 +923,167 @@ Outline:
 • GUI passes highlight colour for hovered/selected entities.
 • Cache outlined variants separately.
 
-```
+
+## Phase 21 · LLM Agent Activation & Basic Operation
+*Objective: Enable agents to make actual LLM calls, process responses into basic actions, and have these actions affect the world state.*
+
+### Wave 21-S (Stub & Core Modification - Merge First)
+
+Task 21-S-1
+Developer @dev-alice
+Files allowed:
+└─ agent_world/core/world.py
+└─ agent_world/ai/llm/llm_manager.py
+Outline:
+• Add `llm_manager_instance: LLMManager | None = None` to `World` class.
+• In `LLMManager`, add a method `async def process_single_request_from_queue(self) -> bool:` that takes one item from `self.queue`, makes the actual (mocked or stubbed for now) API call, and puts the result into `self.cache` and the associated `asyncio.Future`. Returns `True` if a request was processed.
+• In `LLMManager`, modify `request()`: if in "live" mode and a real call is intended, it should still return `"<wait>"` but also store the `prompt` and the `asyncio.Future` it created in a new temporary dict on `LLMManager` (e.g., `self.pending_futures: dict[str, asyncio.Future[str]]`). This is so `AIReasoningSystem` can later retrieve the future if needed.
+
+Task 21-S-2
+Developer @dev-bob
+Files allowed:
+└─ agent_world/core/components/ai_state.py
+Outline:
+• Add `pending_llm_prompt: str | None = None` to `AIState` dataclass.
+• Add `last_llm_response: str | None = None` to `AIState` dataclass.
+
+### Wave 21-A (Parallel once Wave 21-S merged)
+
+Task 21-A-1
+Developer @dev-charlie
+Files allowed:
+└─ agent_world/main.py
+└─ agent_world/bootstrap.py (if bootstrap logic is separate, otherwise agent_world/main.py)
+Outline:
+• In `bootstrap()` (or where `LLMManager` is created), store the `LLMManager` instance on `world.llm_manager_instance`.
+• In the main game loop in `main.py`, after `systems_manager.update()` and before `tm.sleep_until_next_tick()`:
+    • If `world.llm_manager_instance` exists and its queue is not empty:
+        • Call `asyncio.run(world.llm_manager_instance.process_single_request_from_queue())`.
+        • (For CI/offline tests, this `asyncio.run` call should be mockable or conditional based on `LLMManager.current_mode()`. If offline, `process_single_request_from_queue` might do nothing or process a mock.)
+
+Task 21-A-2
+Developer @dev-dana
+Files allowed:
+└─ agent_world/systems/ai/ai_reasoning_system.py
+Outline:
+• Modify `AIReasoningSystem.update()`:
+    • If an agent's `AIState.pending_llm_prompt` is not `None`:
+        • Check `world.llm_manager_instance.cache` for a response to this `pending_llm_prompt`.
+        • If a response is found (and it's not `"<wait>"`):
+            • Store it in `AIState.last_llm_response`.
+            • Add `(entity_id, actual_response_string)` to `self.action_tuples_list`.
+            • Clear `AIState.pending_llm_prompt`.
+        • Else (no response yet), do nothing for this agent this tick (it's still waiting).
+    • Else (no pending prompt):
+        • Build a new prompt.
+        • Call `world.llm_manager_instance.request(prompt)`.
+        • Store the `prompt` in `AIState.pending_llm_prompt`.
+        • (Do not add to `action_tuples_list` yet; wait for the response handling above).
+    • If `llm.request()` returned `"<wait>"` (or no actual action string is derived after checking cache), then run the behavior tree fallback as currently implemented and add its action to `action_tuples_list`.
+
+Task 21-A-3
+Developer @dev-elliot
+Files allowed:
+└─ agent_world/utils/cli/commands.py
+└─ tests/test_ai_llm.py
+Outline:
+• Modify `/spawn npc` command: when an NPC is spawned, automatically add an `AIState` component to it (e.g., `AIState(personality="default", goals=["explore"])`).
+• Update `test_ai_llm.py` or create `test_llm_processing_loop.py`:
+    • Test the new `LLMManager.process_single_request_from_queue()` by putting a mock future on the queue and verifying it gets processed and the cache updated.
+    • Test `AIReasoningSystem`'s new logic: an agent makes a request, `pending_llm_prompt` is set; on next tick (after mock `process_single_request_from_queue` populates cache), `last_llm_response` is set and action is queued.
+
+### Wave 21-B (Serial follow-ups after Wave 21-A)
+
+Task 21-B-1
+Developer @dev-fay
+Files allowed:
+└─ agent_world/ai/llm/llm_manager.py
+└─ tests/conftest.py
+Outline:
+• Implement the *actual* HTTP call logic within `LLMManager.process_single_request_from_queue()` for "live" mode, using `httpx` or `aiohttp` for the async request to OpenRouter.
+• Ensure proper error handling (network errors, API errors) and that these result in the future being resolved (perhaps with a specific error marker or falling back to `"<wait>"` in cache).
+• Update `mock_llm` fixture in `conftest.py` to also allow mocking the behavior of `process_single_request_from_queue` or the underlying async HTTP call if needed for more complex tests. (Current `mock_llm` patches `request()`, which might be sufficient if `process_single_request_from_queue` uses the `LLMManager.current_mode()` to decide its action).
+
+Task 21-B-2
+Developer @dev-glen
+Files allowed:
+└─ agent_world/systems/ai/actions.py
+└─ agent_world/systems/ai/action_execution_system.py
+└─ tests/test_actions.py
+Outline:
+• Review `parse_action()`: ensure it can parse a variety of simple actions that an LLM might realistically output (e.g., `MOVE N`, `ATTACK <id>`, `PICKUP <item_id_if_known_or_nearby_item_tag>`, `SAY <message>`). Add new action types if necessary.
+• Ensure `ActionExecutionSystem` can handle any new parsed action types, translating them into calls to appropriate game systems or component changes.
+• Add tests for any new parsable actions and their execution.
 
 ---
 
-### ✅ Completion Criteria
-* Main loop ≥ 10 Hz with ≥ 5 k entities.  
-* Forces + collision events logged and surfaced to AI.  
-* Deterministic CI via mock-LLM; “echo” mode for local demos.  
-* `/gui` shows moving sprites; GUI & CLI inputs affect the simulation; abilities hot-reload live.  
-* Snapshots + incremental replays load without divergence.  
-* Test coverage ≥ 95 %; docs & changelog up-to-date.
+## Phase 22 · Angel Generator Integration & Dynamic Ability Usage
+*Objective: Allow the Angel generator to create new ability files, have the `AbilitySystem` load them, and enable agents (via LLM) or CLI to use these dynamic abilities.*
+
+### Wave 22-S (Stub - Merge First)
+
+Task 22-S-1
+Developer @dev-hana
+Files allowed:
+└─ agent_world/systems/ai/actions.py
+Outline:
+• Add new action types to be parsed by `parse_action()`:
+    • `GenerateAbilityAction(actor: int, description: str)`
+    • `UseAbilityAction(actor: int, ability_name: str, target_id: Optional[int] = None)`
+• Ensure `ActionExecutionSystem` will have a way to receive these (stubs for now in `ActionExecutionSystem` if it's modified in a later task).
+
+### Wave 22-A (Parallel once Wave 22-S merged)
+
+Task 22-A-1
+Developer @dev-ian
+Files allowed:
+└─ agent_world/utils/cli/commands.py
+Outline:
+• Add new CLI command: `/generate_ability <description_string...>`
+    • This command calls `agent_world.ai.angel.generator.generate_ability(description)`.
+    • Prints the path of the generated file.
+• Add new CLI command: `/use_ability <caster_id> <AbilityClassName> [target_id]`
+    • This command directly calls `world.ability_system_instance.use(AbilityClassName, caster_id, target_id_if_provided)`.
+    • (Requires `AbilitySystem` instance to be on `world` or accessible).
+
+Task 22-A-2
+Developer @dev-jade
+Files allowed:
+└─ agent_world/systems/ai/action_execution_system.py
+└─ agent_world/core/world.py
+└─ agent_world/bootstrap.py (or agent_world/main.py for bootstrap)
+Outline:
+• In `bootstrap()`, ensure an `AbilitySystem` instance is created and stored on `world.ability_system_instance`.
+• Modify `ActionExecutionSystem.update()` to handle:
+    • `GenerateAbilityAction`: Calls `agent_world.ai.angel.generator.generate_ability(action.description)`. Logs success/failure.
+    • `UseAbilityAction`: Calls `world.ability_system_instance.use(action.ability_name, action.actor, action.target_id)`. Logs success/failure.
+
+Task 22-A-3
+Developer @dev-zoe
+Files allowed:
+└─ agent_world/systems/ability/ability_system.py
+└─ agent_world/ai/llm/prompt_builder.py
+Outline:
+• Modify `AbilitySystem.use()` to accept an optional `target_id: int | None`. If an ability requires a target, it should handle this (e.g., abilities might have a `set_target(target_id)` method or take it in `execute`). This is a contract change for abilities.
+• Modify `build_prompt()`: Include a list of available abilities (class names from `world.ability_system_instance.abilities.keys()`) in the prompt context so the LLM knows what skills an agent possesses or can attempt to use.
+
+### Wave 22-B (Serial follow-ups after Wave 22-A)
+
+Task 22-B-1
+Developer @dev-alice
+Files allowed:
+└─ tests/test_angel_generator.py
+└─ tests/test_systems_ability.py
+Outline:
+• Enhance `test_angel_generator.py`: Test that after generating an ability file, and after `AbilitySystem` updates (or is reloaded via `/reload abilities`), the new ability is usable via `AbilitySystem.use()`.
+• Enhance `test_systems_ability.py`: Test the `use()` method with abilities that might take targets.
+
+Task 22-B-2
+Developer @dev-bob
+Files allowed:
+└─ AGENTS.md (or a new DESIGN_DOC_ABILITIES.md)
+└─ agent_world/abilities/base.py
+Outline:
+• Document the new `GenerateAbilityAction` and `UseAbilityAction` for LLM prompting.
+• Document how LLMs can discover and decide to use abilities.
+• Refine `Ability.execute` signature in `base.py` if needed to accept `target_id: int | None = None` or similar, and update existing built-in abilities (`melee.py`, `ranged.py`) to conform.
