@@ -21,8 +21,26 @@ def test_lru_cache_eviction():
     assert cache.get("c") == "C"
 
 
-def test_llm_manager_queue_and_cache():
+def test_llm_manager_offline(monkeypatch):
+    monkeypatch.delenv("AW_LLM_MODE", raising=False)
     manager = LLMManager(cache_size=2, queue_max=2)
+    assert LLMManager.current_mode() == "offline"
+    assert manager.request("hello") == "<wait>"
+    assert manager.queue.qsize() == 0
+
+
+def test_llm_manager_echo(monkeypatch):
+    monkeypatch.setenv("AW_LLM_MODE", "echo")
+    manager = LLMManager(cache_size=2, queue_max=2)
+    assert LLMManager.current_mode() == "echo"
+    assert manager.request("a\n\nlast line") == "last line"
+    assert manager.queue.qsize() == 0
+
+
+def test_llm_manager_live_queue_and_cache(monkeypatch):
+    monkeypatch.setenv("AW_LLM_MODE", "live")
+    manager = LLMManager(cache_size=2, queue_max=2)
+    assert LLMManager.current_mode() == "live"
     assert manager.request("hello") == "<wait>"
     assert manager.queue.qsize() == 1
 
