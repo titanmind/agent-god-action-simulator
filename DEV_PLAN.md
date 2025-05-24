@@ -329,6 +329,119 @@ Task outline:
 
 ---
 
+## Phase 8 — Core Gameplay Polish
+
+```
+Wave 8-A  (run in parallel)
+
+Task 8-A-1
+Developer @dev-alice
+Files allowed:
+  └─ agent_world/systems/combat/defense.py
+  └─ agent_world/systems/combat/combat_system.py
+Outline:
+  • Add armor & dodge using DamageType look-ups.
+  • Emit “death” event when Health.cur ≤ 0.
+
+Task 8-A-2
+Developer @dev-bob
+Files allowed:
+  └─ agent_world/systems/interaction/trading.py
+  └─ agent_world/systems/interaction/stealing.py
+Outline:
+  • Implement simple barter + reputation penalty on theft.
+
+Task 8-A-3
+Developer @dev-charlie
+Files allowed:
+  └─ agent_world/systems/movement/movement_system.py
+  └─ agent_world/systems/movement/pathfinding.py
+Outline:
+  • Add obstacle grid & collision resolve; update A* to respect obstacles.
+```
+
+```
+Wave 8-B  (after 8-A)
+
+Task 8-B-1
+Developer @dev-dana
+Files allowed:
+  └─ agent_world/utils/observer.py
+  └─ agent_world/utils/profiling.py
+Outline:
+  • Integrate `print_fps()` into main loop; add `observer.record_tick()`.
+  • Provide CLI `/fps` to toggle live read-out.
+```
+
+---
+
+## Phase 9 — Advanced Agent Cognition
+
+```
+Wave 9-A
+
+Task 9-A-1
+Developer @dev-elliot
+Files allowed:
+  └─ agent_world/ai/memory.py  (new)
+Outline:
+  • Vector-store-like short-term memory ring; prune on overflow.
+  • Expose `retrieve(agent_id, k)` for prompt_builder.
+
+Task 9-A-2
+Developer @dev-fay
+Files allowed:
+  └─ agent_world/ai/llm/prompt_builder.py
+Outline:
+  • Inject top-K memory snippets into prompt template.
+```
+
+```
+Wave 9-B  (after 9-A)
+
+Task 9-B-1
+Developer @dev-glen
+Files:
+  └─ agent_world/systems/ai/behavior_tree.py
+Outline:
+  • Draft three-node BT (Selector → Sequence → Action) and plug into AIReasoningSystem for fallback when LLM returns `<wait>`.
+```
+
+Sources on AI memory & planning ([Medium][12]).
+
+---
+
+## Phase 10 — Visualization & Debug UI
+
+Minimal ANSI or Ascii-map view lets designers *see* combat & path-finding:
+
+```
+Wave 10-A
+
+Task 10-A-1
+Developer @dev-hana
+Files:
+  └─ agent_world/utils/cli/terminal_view.py  (new)
+Outline:
+  • Render 40×20 chunk of tile_map with glyph per sprite colour.
+  • Hook `/view [radius]` to toggle live redraw every tick.
+```
+
+---
+
+## Phase 11 — Performance & Scalability Pass
+
+* **Profiling async sections** with techniques from recent guides ([Medium][13]).
+* Stress-test 5 k entities; optimize SpatialGrid (batch inserts) and A\* (early exit).
+
+---
+
+## Phase 12 — Content & Economy
+
+* Crafting graph, resource nodes, faction economy loops; governed by configurable YAML tuned via replay analytics.
+
+---
+
 ### Completion Criteria
 
 * All phases merged without file-scope conflicts.
@@ -336,3 +449,5 @@ Task outline:
 * Every major PR ships or updates **pytest** coverage; CI green before merge.
 
 Stay within your file boundaries; open a merge-blocker issue if another file must change. Happy hacking!
+
+
