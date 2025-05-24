@@ -7,6 +7,10 @@ from collections import deque
 from typing import Deque, Optional, Union
 
 
+# ID used by the GUI input handler for the local player controller
+PLAYER_ID = 0
+
+
 # ------------------------------------------------------------------
 # Action dataclasses
 # ------------------------------------------------------------------
@@ -101,4 +105,5 @@ __all__ = [
     "Action",
     "ActionQueue",
     "parse_action",
+    "PLAYER_ID",
 ]
