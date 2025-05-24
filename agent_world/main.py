@@ -34,6 +34,8 @@ from .systems.interaction.stealing import StealingSystem
 from .systems.interaction.crafting import CraftingSystem
 from .systems.ability.ability_system import AbilitySystem
 from .systems.ai.ai_reasoning_system import AIReasoningSystem
+from .systems.ai.behavior_tree_system import BehaviorTreeSystem
+from .ai.behaviors.creature_bt import build_creature_tree
 
 try:
     from .systems.ai.action_execution_system import ActionExecutionSystem
@@ -116,6 +118,10 @@ def bootstrap(config_path: str | Path = Path("config.yaml")) -> World:
 
     sm.register(physics_sys)
     sm.register(movement_sys)
+    behavior_tree_system = BehaviorTreeSystem(world)
+    behavior_tree_system.register_tree("creature", build_creature_tree())
+    sm.register(behavior_tree_system)
+    world.behavior_tree_system_instance = behavior_tree_system
     sm.register(perception_sys)
     sm.register(combat_sys)
     sm.register(pickup_sys)
@@ -123,7 +129,8 @@ def bootstrap(config_path: str | Path = Path("config.yaml")) -> World:
     sm.register(stealing_sys)
     sm.register(crafting_sys)
     sm.register(ability_sys) # AbilitySystem needs to be registered
-    world.ability_system_instance = ability_sys # Store instance on world
+    if not hasattr(world, "ability_system_instance"):
+        world.ability_system_instance = ability_sys
     sm.register(ai_reasoning_sys)
 
     if ActionExecutionSystem is not None:
