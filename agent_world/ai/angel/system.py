@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
+import logging
 import re
 
 from . import generator as angel_generator
@@ -20,6 +21,15 @@ class AngelSystem:
         cm = getattr(self.world, "component_manager", None)
         if cm is None:
             return
+
+        em = getattr(self.world, "entity_manager", None)
+        if em is not None and not em.has_entity(agent_id):
+            logging.warning(
+                "AngelSystem: attempted to grant ability to unknown agent_id %s",
+                agent_id,
+            )
+            return
+
         comp = cm.get_component(agent_id, KnownAbilitiesComponent)
         if comp is None:
             comp = KnownAbilitiesComponent()
