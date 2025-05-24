@@ -3,6 +3,7 @@ from agent_world.core.entity_manager import EntityManager
 from agent_world.core.component_manager import ComponentManager
 from agent_world.core.components.position import Position
 from agent_world.core.components.inventory import Inventory
+from agent_world.core.spatial.spatial_index import SpatialGrid
 from agent_world.systems.interaction.pickup import PickupSystem, Tag
 from agent_world.systems.interaction.trading import TradingSystem
 from agent_world.systems.interaction.stealing import StealingSystem, Relationship
@@ -12,6 +13,7 @@ def test_pickup_moves_item_to_inventory():
     world = World((5, 5))
     world.entity_manager = EntityManager()
     world.component_manager = ComponentManager()
+    world.spatial_index = SpatialGrid(cell_size=1)
 
     player = world.entity_manager.create_entity()
     item = world.entity_manager.create_entity()
@@ -21,6 +23,7 @@ def test_pickup_moves_item_to_inventory():
 
     world.component_manager.add_component(item, Position(1, 1))
     world.component_manager.add_component(item, Tag("item"))
+    world.spatial_index.insert_many([(player, (1, 1)), (item, (1, 1))])
 
     system = PickupSystem(world)
     system.update()
@@ -34,6 +37,7 @@ def test_pickup_respects_capacity():
     world = World((5, 5))
     world.entity_manager = EntityManager()
     world.component_manager = ComponentManager()
+    world.spatial_index = SpatialGrid(cell_size=1)
 
     player = world.entity_manager.create_entity()
     item1 = world.entity_manager.create_entity()
@@ -47,6 +51,13 @@ def test_pickup_respects_capacity():
 
     world.component_manager.add_component(item2, Position(0, 0))
     world.component_manager.add_component(item2, Tag("item"))
+    world.spatial_index.insert_many(
+        [
+            (player, (0, 0)),
+            (item1, (0, 0)),
+            (item2, (0, 0)),
+        ]
+    )
 
     system = PickupSystem(world)
     system.update()

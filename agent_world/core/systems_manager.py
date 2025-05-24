@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any, Iterable, List
+import inspect
 
 from agent_world.systems.movement.movement_system import MovementSystem
 from agent_world.systems.movement.physics_system import PhysicsSystem
@@ -58,12 +59,36 @@ class SystemsManager:
     # Tick dispatch
     # ------------------------------------------------------------------
     def update(self, *args: Any, **kwargs: Any) -> None:
-        """Call ``update`` on each registered system in order."""
+        """Call ``update`` on each registered system in order.
+
+        The manager adapts the provided ``args`` for each system based on its
+        ``update`` method signature so that subsystems can accept varying
+        parameter counts (e.g. ``update()`` or ``update(tick)``).
+        """
 
         for system in list(self._systems):
-            update = getattr(system, "update", None)
-            if callable(update):
-                update(*args, **kwargs)
+            method = getattr(system, "update", None)
+            if not callable(method):
+                continue
+
+            sig = inspect.signature(method)
+            params = [
+                p
+                for p in sig.parameters.values()
+                if p.kind
+                in (
+                    inspect.Parameter.POSITIONAL_ONLY,
+                    inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                )
+            ]
+            if params and params[0].name == "self":
+                params = params[1:]
+
+            n = len(params)
+            if n == 0:
+                method()
+            else:
+                method(*args[-n:])
 
     # ------------------------------------------------------------------
     # Introspection helpers

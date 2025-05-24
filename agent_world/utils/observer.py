@@ -6,7 +6,7 @@ import json
 import time
 from collections import deque
 from pathlib import Path
-from typing import Any, Deque
+from typing import Any, Deque, Dict, List
 
 from ..persistence.serializer import world_to_dict
 
@@ -16,6 +16,12 @@ _tick_durations: Deque[float] = deque(maxlen=_TICK_HISTORY_LEN)
 
 # Whether to print FPS every tick when recording durations
 _live_fps: bool = False
+
+# Global in-memory list for logged events when no destination is supplied
+_events: List[Dict[str, Any]] = []
+
+# Track whether we've already warned about missing managers
+_missing_manager_warned: bool = False
 
 
 def record_tick(duration: float) -> None:
@@ -69,6 +75,24 @@ def install_tick_observer(tm: Any) -> None:
     setattr(tm, "_observer_wrapped", True)
 
 
+def warn_missing_managers(world: Any) -> None:
+    """Print a warning once if any ``*_manager`` attribute is ``None``."""
+
+    global _missing_manager_warned
+    if _missing_manager_warned:
+        return
+
+    missing = [
+        name
+        for name in dir(world)
+        if name.endswith("_manager") and getattr(world, name, None) is None
+    ]
+    if missing:
+        joined = ", ".join(sorted(missing))
+        print(f"Warning: world has uninitialized managers: {joined}")
+        _missing_manager_warned = True
+
+
 def dump_state(world: "World", path: str | Path) -> None:
     """Write ``world`` state to ``path`` as JSON for offline inspection."""
 
@@ -80,11 +104,29 @@ def dump_state(world: "World", path: str | Path) -> None:
         json.dump(data, fh, indent=2)
 
 
+def log_event(
+    event_type: str,
+    data: Dict[str, Any],
+    log: List[Dict[str, Any]] | None = None,
+) -> None:
+    """Append an event dict to ``log`` or the internal event buffer."""
+
+    event = {"type": event_type}
+    event.update(data)
+    if log is None:
+        _events.append(event)
+    else:
+        log.append(event)
+
+
 __all__ = [
     "record_tick",
     "print_fps",
     "toggle_live_fps",
     "install_tick_observer",
+    "warn_missing_managers",
+    "log_event",
     "dump_state",
     "_tick_durations",
+    "_events",
 ]
