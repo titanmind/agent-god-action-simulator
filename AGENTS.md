@@ -1,7 +1,5 @@
 # AGENTS.md – Working with the Agent World Simulator Repo
 
-
-
 Welcome, Codex agents!
 This document tells you **where you may edit, how to run code, and the ground rules that keep merges conflict-free**.
 
@@ -29,7 +27,7 @@ No external art: all textures/sprites are procedurally generated under `assets/`
 
 ## 2. Development Workflow
 
-1. **Pick an open task** from `DEV_PLAN.md`.
+1. **If you are assigned a task from DEV_PLAN.md:** ensure you check off your task, wave, or phase when you complete your task.
 2. **Create a branch** named `task/<phase>-<wave>-<id>`.
 3. **Edit *only* the files listed for your task.**
 4. Run `pytest` locally **early and often**; add/extend tests for every major update ([edbennett.github.io][1], [Real Python][2]).
