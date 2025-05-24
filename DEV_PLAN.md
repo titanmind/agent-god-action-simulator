@@ -131,7 +131,7 @@ Task outline:
 ### Wave 2-B (3 parallel tasks, after 2-A)
 
 ```
-Task 2-B-1
+✓ Task 2-B-1
 Developer @dev-alice
 Files allowed to edit:
   └─ agent_world/systems/combat/combat_system.py
