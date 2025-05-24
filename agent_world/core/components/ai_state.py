@@ -12,4 +12,6 @@ class AIState:
 
     personality: str
     goals: List[str] = field(default_factory=list)
+    pending_llm_prompt_id: str | None = None
+    last_llm_action_tick: int = -1
 
