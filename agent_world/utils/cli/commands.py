@@ -132,7 +132,7 @@ def spawn(world: Any, kind: str, x_str: str | None = None, y_str: str | None = N
         cm.add_component(ent_id, Inventory(capacity=4))
         cm.add_component(ent_id, AIState(personality="curious_explorer_" + str(ent_id), goals=[]))
         cm.add_component(ent_id, Physics(mass=1.0, vx=0.0, vy=0.0, friction=0.95))
-        cm.add_component(ent_id, PerceptionCache(visible=[], last_tick=-1)) # <<< ADDED PerceptionCache
+        cm.add_component(ent_id, PerceptionCache(visible=[], last_tick=-1))
         print(f"Spawned NPC (ID: {ent_id}) at ({x},{y}) with AIState, Physics, and PerceptionCache")
     elif kind_lower == "item":
         cm.add_component(ent_id, Tag("item"))
@@ -150,7 +150,7 @@ def spawn(world: Any, kind: str, x_str: str | None = None, y_str: str | None = N
         if not cm.get_component(PLAYER_ID, Physics):
             cm.add_component(PLAYER_ID, Physics(mass=1.0, vx=0.0, vy=0.0, friction=0.95))
         spatial_index.insert(PLAYER_ID, player_default_pos)
-        print(f"PLAYER_ID ({PLAYER_ID}) Position and Physics components ensured at {player_default_pos}.")
+        # print(f"PLAYER_ID ({PLAYER_ID}) Position and Physics components ensured at {player_default_pos}.") # Can be verbose
     return ent_id
 
 
@@ -164,7 +164,9 @@ def debug(world: Any, entity_id_str: str | None) -> None:
     entity_component_map = cm._components.get(entity_id)
     print(f"--- Entity {entity_id} Components ---")
     if entity_component_map:
-        for name, comp_instance in entity_component_map.items(): print(f"  {name}: {comp_instance}")
+        for name_type, comp_instance in entity_component_map.items(): # Iterate over type and instance
+             comp_name_str = name_type.__name__ if isinstance(name_type, type) else str(name_type)
+             print(f"  {comp_name_str}: {comp_instance}")
     else: print("  No components found for this entity.");
     print("-----------------------------")
 
@@ -189,16 +191,15 @@ def _install_gui_hook(world: Any, renderer_instance: Renderer) -> None:
 
     def gui_rendering_sleep_wrapper() -> None:
         if getattr(world, "gui_enabled", False) and renderer_instance and renderer_instance.window:
-            renderer_instance.window.clear((30, 30, 30))
-            renderer_instance.update(world)
-            if hasattr(renderer_instance.window, '_surface'):
-                 import pygame
-            renderer_instance.window.refresh()
+            if hasattr(renderer_instance.window, '_surface'): # Check if surface exists
+                 renderer_instance.window.clear((30, 30, 30))
+                 renderer_instance.update(world)
+                 renderer_instance.window.refresh()
         original_sleep()
 
     tm.sleep_until_next_tick = gui_rendering_sleep_wrapper
     tm._gui_renderer_hook_instance = renderer_instance
-    print("GUI rendering hook installed on TimeManager.")
+    # print("GUI rendering hook installed on TimeManager.") # Can be verbose
 
 
 def _uninstall_gui_hook(world: Any) -> None:
@@ -209,7 +210,7 @@ def _uninstall_gui_hook(world: Any) -> None:
         delattr(tm, "_original_sleep_method_gui")
     if hasattr(tm, "_gui_renderer_hook_instance"):
         delattr(tm, "_gui_renderer_hook_instance")
-    print("GUI rendering hook uninstalled from TimeManager.")
+    # print("GUI rendering hook uninstalled from TimeManager.") # Can be verbose
 
 
 def gui(world: Any, state: Dict[str, Any]) -> None:
@@ -223,7 +224,7 @@ def gui(world: Any, state: Dict[str, Any]) -> None:
     if world.gui_enabled:
         _install_gui_hook(world, renderer_instance)
         print("GUI enabled. Window should appear/update.")
-        if renderer_instance.window:
+        if renderer_instance.window and hasattr(renderer_instance.window, '_surface'):
             renderer_instance.window.clear((30,30,30))
             renderer_instance.update(world)
             renderer_instance.window.refresh()
@@ -246,24 +247,56 @@ def help_command(state: Dict[str, Any]) -> None:
     print("  /quit                - Exit the application.\n")
 
 
-def execute(command: str, args: list[str], world: Any, state: Dict[str, Any]) -> None:
+def execute(command: str, args: list[str], world: Any, state: Dict[str, Any]) -> Any:
+    # +++ UNMISSABLE DEBUG PRINT +++
+    print(f"[[[[[ TOP OF commands.execute CALLED! command: {command} ]]]]]")
+    # +++ END UNMISSABLE DEBUG PRINT +++
+
     if "running" not in state: state["running"] = True
     cmd_lower = command.lower()
-    if cmd_lower == "help": help_command(state)
-    elif cmd_lower == "pause": pause(state)
-    elif cmd_lower == "step": step(state)
-    elif cmd_lower == "save": save(world, args[0] if args else None)
-    elif cmd_lower == "reload" and args and args[0].lower() == "abilities": reload_abilities(world)
-    elif cmd_lower == "profile": profile(world, args[0] if args else None)
-    elif cmd_lower == "spawn" and args: spawn(world, args[0], args[1] if len(args) > 1 else None, args[2] if len(args) > 2 else None)
-    elif cmd_lower == "debug" and args: debug(world, args[0])
-    elif cmd_lower == "gui": gui(world, state)
-    elif cmd_lower == "fps": fps(world, state)
+    
+    return_value: Any = None 
+
+    if cmd_lower == "spawn" and args:
+        spawned_id = spawn(world, args[0], args[1] if len(args) > 1 else None, args[2] if len(args) > 2 else None)
+        print(f"[[[[[ DEBUG commands.execute: spawn() returned: {spawned_id}, type: {type(spawned_id)} ]]]]]")
+        return_value = spawned_id 
+    elif cmd_lower == "help":
+        help_command(state)
+        # return_value remains None
+    elif cmd_lower == "pause":
+        pause(state)
+        # return_value remains None
+    elif cmd_lower == "step":
+        step(state)
+        # return_value remains None
+    elif cmd_lower == "save":
+        save(world, args[0] if args else None)
+        # return_value remains None
+    elif cmd_lower == "reload" and args and args[0].lower() == "abilities":
+        reload_abilities(world)
+        # return_value remains None
+    elif cmd_lower == "profile":
+        profile(world, args[0] if args else None)
+        # return_value remains None
+    elif cmd_lower == "debug" and args:
+        debug(world, args[0])
+        # return_value remains None
+    elif cmd_lower == "gui":
+        gui(world, state)
+        # return_value remains None
+    elif cmd_lower == "fps":
+        fps(world, state)
+        # return_value remains None
     elif cmd_lower == "quit":
         state["running"] = False
         print("Quit command received. Shutting down...")
+        # return_value remains None
     else:
         print(f"Unknown command: /{command}. Type /help for available commands.")
+        # return_value remains None
+    
+    return return_value # Explicitly return the captured value (or None if not set)
 
 __all__ = [
     "pause", "step", "save", "reload_abilities", "profile", "spawn", "debug",

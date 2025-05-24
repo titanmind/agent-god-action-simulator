@@ -1,4 +1,4 @@
-
+# agent-god-action-simulator/agent_world/ai/llm/llm_manager.py
 """LLM request queue and cache manager."""
 
 from __future__ import annotations
@@ -9,7 +9,8 @@ import socket
 import threading
 import uuid
 from pathlib import Path
-from typing import Any, Tuple, Dict # Added Dict
+from typing import Any, Tuple, Dict 
+import json # For pretty printing JSON response
 
 import httpx
 import yaml
@@ -45,8 +46,8 @@ class LLMManager:
             else:
                 try:
                     # Test connectivity before declaring online
-                    socket.gethostbyname("openrouter.ai") # This can block, consider async check or move
-                    print(f"LLM online: {self.model} (API Key Present: {'Yes' if self.api_key else 'No'})")
+                    socket.gethostbyname("openrouter.ai") 
+                    # MODIFIED: Moved print statement to after successful offline check
                 except OSError:
                     print("[LLMManager] Network connectivity to openrouter.ai failed. Forcing offline mode.")
                     self.offline = True
@@ -54,6 +55,8 @@ class LLMManager:
         
         if self.offline and self.mode == "live": # If forced offline but config was live
              print(f"[LLMManager] WARNING: LLM mode was 'live' but forced to '{self.mode}' due to missing requirements or network issues.")
+        elif not self.offline and self.mode == "live": # Only print if truly online
+             print(f"[LLMManager] LLM online: {self.model} (API Key Present: {'Yes' if self.api_key else 'No'})")
 
 
         self.cache = LLMCache(capacity=cache_size)
@@ -72,7 +75,9 @@ class LLMManager:
         world.async_llm_responses[prompt_id] = fut
         try:
             self.queue.put_nowait((prompt, fut, prompt_id))
-            print(f"[LLMManager DEBUG] Queued prompt_id {prompt_id} for: {prompt[:70]}...")
+            # --- MODIFIED LOGGING: Simplified as prompt_builder logs the full prompt ---
+            print(f"[LLMManager DEBUG _add_future_and_queue_request] Queued prompt_id {prompt_id}.")
+            # --- END MODIFIED LOGGING ---
         except asyncio.QueueFull:
             print(f"[LLMManager ERROR] Queue full. Failed to queue prompt_id {prompt_id}.")
             if world.async_llm_responses.get(prompt_id) == fut:
@@ -95,56 +100,49 @@ class LLMManager:
         # Live mode
         cached = self.cache.get(prompt)
         if cached is not None:
-            print(f"[LLMManager DEBUG] Cache hit for prompt: {prompt[:70]}... -> {cached[:70]}...")
+            # --- MODIFIED LOGGING: Indication of cache hit ---
+            print(f"[LLMManager DEBUG Cache Hit] Returning cached response for prompt (first 70 chars): {prompt[:70].replace(chr(10), '//')}... -> '{cached[:100].replace(chr(10), '//')}'...")
+            # --- END MODIFIED LOGGING ---
             return cached
 
         if not self.is_ready:
-            print(f"[LLMManager WARNING] Not ready, returning <wait_llm_not_ready> for prompt: {prompt[:70]}...")
+            print(f"[LLMManager WARNING] Not ready, returning <wait_llm_not_ready> for prompt: {prompt[:70].replace(chr(10), '//')}...")
             return "<wait_llm_not_ready>"
 
         if world is None:
-            # This should ideally not happen if AIReasoningSystem always passes the world.
             print("[LLMManager ERROR] world is None in live mode request. Cannot manage async future. Returning <error_llm_setup>.")
             return "<error_llm_setup>"
         
-        if self.loop is None: # Should be covered by is_ready, but as a safeguard
+        if self.loop is None: 
             print("[LLMManager ERROR] self.loop is None despite is_ready being True. Returning <error_llm_loop_missing>.")
             return "<error_llm_loop_missing>"
-
-        # At this point, self.is_ready is True, so self.loop is initialized and running.
-        # And world is not None.
         
-        # Create future on the worker's loop and schedule other operations via call_soon_threadsafe
-        # to ensure thread safety when interacting with worker loop's objects.
         fut: asyncio.Future[str] = self.loop.create_future()
         prompt_id = uuid.uuid4().hex
         
         self.loop.call_soon_threadsafe(
             self._add_future_and_queue_request, prompt, fut, prompt_id, world
         )
-        # print(f"[LLMManager DEBUG] Scheduled prompt_id {prompt_id} via call_soon_threadsafe.")
         return prompt_id
 
 
     async def process_queue_item(self) -> None:
         """Handle a single queued prompt and populate the cache."""
         prompt, fut, prompt_id = await self.queue.get()
-        print(f"[LLMManager DEBUG] Processing prompt_id {prompt_id} from queue: {prompt[:70]}...")
+        # --- MODIFIED LOGGING: Simplified as prompt_builder logs full prompt ---
+        print(f"[LLMManager DEBUG process_queue_item] Processing prompt_id {prompt_id} from queue.")
+        # --- END MODIFIED LOGGING ---
 
-        result = "<wait>" # Default result
-        if self.offline: # This check might be redundant if mode is already offline, but safe
-            if self.mode == "echo": # Re-check mode for echo specifically if offline flag was set for other reasons
+        result = "<wait>" 
+        if self.offline: 
+            if self.mode == "echo": 
                 lines = [ln.strip() for ln in prompt.splitlines() if ln.strip()]
                 result = lines[-1] if lines else ""
-            # else mode is 'offline', result remains "<wait>"
-        else: # Live mode, not offline
+        else: 
             url = "https://openrouter.ai/api/v1/chat/completions"
             headers = {
                 "Authorization": f"Bearer {self.api_key}",
                 "Content-Type": "application/json",
-                # Optional: Add site URL for OpenRouter moderation
-                # "HTTP-Referer": "YOUR_SITE_URL", 
-                # "X-Title": "YOUR_APP_NAME",
             }
             payload = {
                 "model": self.model,
@@ -153,12 +151,20 @@ class LLMManager:
             
             raw_response_text = None
             try:
-                async with httpx.AsyncClient(timeout=15.0) as client: # Increased timeout slightly
+                async with httpx.AsyncClient(timeout=15.0) as client: 
                     resp = await client.post(url, json=payload, headers=headers)
-                    raw_response_text = resp.text # For logging
-                    resp.raise_for_status() # Raises HTTPStatusError for 4xx/5xx
+                    raw_response_text = resp.text 
+                    resp.raise_for_status() 
                     data: Dict[str, Any] = resp.json()
-                    print(f"[LLMManager DEBUG] Raw API Response for prompt_id {prompt_id}: {raw_response_text[:500]}") # Log raw response
+
+                    # --- MODIFIED LOGGING: Full Raw JSON Response, pretty-printed ---
+                    try:
+                        parsed_json_for_log = json.loads(raw_response_text) # Use original raw_response_text
+                        pretty_raw_response = json.dumps(parsed_json_for_log, indent=2)
+                        print(f"\n--- [LLMManager Raw API Response prompt_id {prompt_id}] ---\n{pretty_raw_response}\n--- END Raw API Response ---\n")
+                    except json.JSONDecodeError: # Fallback if not valid JSON
+                        print(f"\n--- [LLMManager Raw API Response (Non-JSON) prompt_id {prompt_id}] ---\n{raw_response_text}\n--- END Raw API Response ---\n")
+                    # --- END MODIFIED LOGGING ---
 
                     choices = data.get("choices")
                     if choices and isinstance(choices, list) and len(choices) > 0:
@@ -182,9 +188,9 @@ class LLMManager:
                         print(f"[LLMManager WARNING] 'choices' array is empty or missing for prompt_id {prompt_id}.")
                         result = "<error_llm_no_choices>"
                     
-                    if not result: # If result ended up as an empty string
+                    if not result: 
                         print(f"[LLMManager WARNING] LLM returned empty content for prompt_id {prompt_id}.")
-                        result = "<llm_empty_response>" # Make it a distinct string
+                        result = "<llm_empty_response>" 
 
             except httpx.HTTPStatusError as e:
                 print(f"[LLMManager ERROR] HTTP Status Error for prompt_id {prompt_id}: {e.response.status_code} - {e.response.text[:200]}")
@@ -192,24 +198,24 @@ class LLMManager:
             except httpx.RequestError as e:
                 print(f"[LLMManager ERROR] Request Error for prompt_id {prompt_id}: {e}")
                 result = "<error_llm_request>"
-            except Exception as e: # Catch-all for other errors like JSONDecodeError, KeyErrors during parsing
+            except Exception as e: 
                 error_type_name = type(e).__name__
                 print(f"[LLMManager ERROR] Unexpected error ({error_type_name}) processing LLM response for prompt_id {prompt_id}: {e}")
-                # VVV MODIFICATION HERE VVV
-                if raw_response_text is not None: # Check if raw_response_text was populated
+                if raw_response_text is not None: 
                     print(f"   Raw response (if available): {raw_response_text[:500]}")
                 else:
                     print(f"   Raw response was not available (error likely occurred before or during API call).")
-                # ^^^ MODIFICATION HERE ^^^
-                result = "<error_llm_parsing>" # Or a more specific error based on e
+                result = "<error_llm_parsing>" 
 
-        print(f"[LLMManager DEBUG] Result for prompt_id {prompt_id}: '{result}'")
+        # --- MODIFIED LOGGING: Full result string, newlines replaced for console readability ---
+        print(f"[LLMManager DEBUG process_queue_item] Result for prompt_id {prompt_id}: '{result.replace(chr(10), '//')}'")
+        # --- END MODIFIED LOGGING ---
         self.cache.put(prompt, result)
         if not fut.done():
             fut.set_result(result)
         self.queue.task_done()
 
-    async def process_queue_once(self) -> None:
+    async def process_queue_once(self) -> None: # Typically not used with the threaded loop
         if self.queue.empty():
             return
         await self.process_queue_item()
@@ -220,7 +226,7 @@ class LLMManager:
         def _run() -> None:
             self.loop = asyncio.new_event_loop()
             asyncio.set_event_loop(self.loop)
-            self.is_ready = True # Signal readiness
+            self.is_ready = True 
             print("[LLMManager INFO] LLM worker_thread event loop started and ready.")
             
             async def _loop_coro() -> None:
@@ -235,9 +241,7 @@ class LLMManager:
                 self.is_ready = False
                 print("[LLMManager INFO] LLM worker_thread event loop stopped.")
 
-
         self._processing_thread = threading.Thread(target=_run, daemon=True, name="LLMProcessingThread")
-        # world_ref.llm_processing_thread = self._processing_thread # This is already in world.py
         self._processing_thread.start()
 
     # ------------------------------------------------------------------
@@ -250,7 +254,7 @@ class LLMManager:
         if env_mode and env_mode.lower() in cls.MODES:
             return env_mode.lower()
 
-        # Try project root config.yaml first as it's more explicit for the project
+        # Try project root config.yaml first
         project_root_config_path = Path("config.yaml")
         if project_root_config_path.exists():
             try:
@@ -259,10 +263,10 @@ class LLMManager:
                 mode_from_cfg = str(cfg.get("llm", {}).get("mode", "offline")).lower()
                 if mode_from_cfg in cls.MODES:
                     return mode_from_cfg
-            except Exception as e:
+            except Exception as e: # pylint: disable=broad-except
                 print(f"Warning: Error reading project root config.yaml: {e}")
         
-        # Fallback to config.yaml relative to this file's location (agent_world/ai/llm/llm_manager.py)
+        # Fallback to config.yaml relative to this file's location
         path = Path(__file__).resolve().parents[3] / "config.yaml"
         if path.exists():
             try:
@@ -271,9 +275,9 @@ class LLMManager:
                 mode_from_cfg = str(cfg.get("llm", {}).get("mode", "offline")).lower()
                 if mode_from_cfg in cls.MODES:
                     return mode_from_cfg
-            except Exception as e:
+            except Exception as e: # pylint: disable=broad-except
                 print(f"Warning: Error reading parent config.yaml: {e}")
 
-        return "offline" # Default if no valid config found
+        return "offline" 
 
 __all__ = ["LLMManager"]

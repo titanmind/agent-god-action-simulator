@@ -131,26 +131,27 @@ def _view_command(args: Sequence[str], world: Any, state: dict[str, Any]) -> Non
 
 
 def _patch_commands() -> None:
-    from . import commands
+    from . import commands # This should be agent_world.utils.cli.commands
 
     if getattr(commands, "_terminal_view_patched", False):
         return
 
-    original = commands.execute
+    original_execute_func = commands.execute # Store the original function from commands.py
 
-    def execute(
+    # The new execute function that wraps the original
+    def patched_execute_wrapper( 
         command: str, args: list[str], world: Any, state: dict[str, Any]
-    ) -> None:
+    ) -> Any: # <<< CHANGED: Return type to Any
         if command == "view":
-            _view_command(args, world, state)
+            _view_command(args, world, state) # This function handles its own side effects
+            return None # The /view command itself doesn't return a value that main.py needs
         else:
-            original(command, args, world, state)
+            # Call the original execute function from commands.py and RETURN ITS RESULT
+            return original_execute_func(command, args, world, state) # <<< CHANGED: Return the result
 
-    commands.execute = execute  # type: ignore[assignment]
+    commands.execute = patched_execute_wrapper  # type: ignore[assignment] # Monkey-patch commands.execute
     setattr(commands, "_terminal_view_patched", True)
 
+_patch_commands() # This runs when terminal_view.py is imported
 
-_patch_commands()
-
-
-__all__ = ["TerminalView", "get_view"]
+__all__ = ["TerminalView", "get_view"] # Ensure this is at the end if you have it

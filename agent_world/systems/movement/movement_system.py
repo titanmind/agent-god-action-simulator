@@ -1,4 +1,5 @@
 
+# agent-god-action-simulator/agent_world/systems/movement/movement_system.py
 """Movement system handling basic velocity-based translation."""
 
 from __future__ import annotations
@@ -10,6 +11,7 @@ from .pathfinding import is_blocked
 
 from ...core.components.position import Position
 from ...core.components.physics import Physics
+from ...core.components.ai_state import AIState # <<< ADDED for last_bt_move_failed
 
 
 @dataclass
@@ -28,15 +30,15 @@ class MovementSystem:
         self.world = world
         self.event_log = event_log if event_log is not None else []
 
-    def update(self) -> None: # SystemsManager calls update(world, tick) or update(tick) or update()
+    def update(self, world_obj: Any, tick: int) -> None: # Added world_obj and tick to match SystemManager call
         """Move all entities with ``Position`` and a velocity source."""
-        tm = getattr(self.world, "time_manager", None)
-        current_tick = tm.tick_counter if tm else "N/A"
+        # tm = getattr(self.world, "time_manager", None) # world_obj passed in
+        # current_tick = tm.tick_counter if tm else "N/A" # Use tick passed in
 
-        em = getattr(self.world, "entity_manager", None)
-        cm = getattr(self.world, "component_manager", None)
-        index = getattr(self.world, "spatial_index", None)
-        size = getattr(self.world, "size", (0, 0)) # world.size
+        em = getattr(world_obj, "entity_manager", None)
+        cm = getattr(world_obj, "component_manager", None)
+        index = getattr(world_obj, "spatial_index", None)
+        size = getattr(world_obj, "size", (0, 0))
         if em is None or cm is None or index is None:
             return
 
@@ -44,90 +46,79 @@ class MovementSystem:
 
         for entity_id in list(em.all_entities.keys()):
             pos = cm.get_component(entity_id, Position)
+            ai_state = cm.get_component(entity_id, AIState) # Get AIState for the flag
+
             if pos is None:
                 continue
 
-            original_pos_tuple = (pos.x, pos.y) # For checking if position changed
+            original_pos_tuple = (pos.x, pos.y)
+            dx_intent, dy_intent = 0, 0
 
-            dx_intent, dy_intent = 0, 0 # Initialize movement intent
-
-            # Prioritize Physics component for velocity
             phys = cm.get_component(entity_id, Physics)
             if phys is not None:
-                # Movement is based on integer grid steps. Physics velocities are float.
-                # Rounding determines if movement occurs.
-                # PhysicsSystem already applied friction and collision response to phys.vx/vy.
-                dx_intent = int(round(phys.vx)) # Take 1 tick's worth of velocity
+                dx_intent = int(round(phys.vx))
                 dy_intent = int(round(phys.vy))
-                # --- LOGGING: Movement from Physics ---
-                # if dx_intent != 0 or dy_intent != 0 : # Log only if there's an intent to move
-                #     print(f"[Tick {current_tick}] MovementSystem: Entity {entity_id} from Physics vel ({phys.vx:.2f},{phys.vy:.2f}) -> intent dx={dx_intent}, dy={dy_intent}. Old pos: {original_pos_tuple}")
-                # --- END LOGGING ---
             else:
-                # Fallback to Velocity component if Physics component is absent
                 vel = cm.get_component(entity_id, Velocity)
                 if vel is not None:
                     dx_intent, dy_intent = vel.dx, vel.dy
-                    # --- LOGGING: Movement from Velocity Comp ---
-                    # print(f"[Tick {current_tick}] MovementSystem: Entity {entity_id} from Velocity comp ({vel.dx},{vel.dy}). Old pos: {original_pos_tuple}")
-                    # --- END LOGGING ---
                 else:
-                    continue # No velocity source, no movement
+                    if ai_state: # If no velocity source but has AIState, it means no move was attempted
+                        ai_state.last_bt_move_failed = False # Reset flag if no move was even tried
+                    continue
 
             if dx_intent == 0 and dy_intent == 0:
-                continue # No intent to move this tick
+                if ai_state: # No intent to move, so not a "failed" move
+                    ai_state.last_bt_move_failed = False
+                continue 
 
             new_x = pos.x + dx_intent
             new_y = pos.y + dy_intent
             world_width, world_height = size
 
-            # Boundary and obstacle checks
-            if not (0 <= new_x < world_width and 0 <= new_y < world_height and not is_blocked((new_x, new_y))):
-                # --- LOGGING: Movement Blocked (Boundary/Obstacle) ---
-                # print(f"[Tick {current_tick}] MovementSystem: Entity {entity_id} movement to ({new_x},{new_y}) blocked (boundary/obstacle). Stays at {original_pos_tuple}")
-                # --- END LOGGING ---
-                # If movement from physics was blocked, PhysicsSystem should have zeroed vx/vy.
-                # If movement from Velocity comp, this just prevents the move.
-                continue
-
-            # Check for other entities occupying the target cell (simple collision)
-            # Note: Spatial index query for radius 0 gives entities *at* that exact point.
-            # This assumes entities cannot occupy the same tile.
-            # More complex collision (e.g. entity sizes) would need radius > 0.
-            occupants_at_target = index.query_radius((new_x, new_y), 0)
-            # Filter out self if it somehow appears in query_radius at new_x, new_y (shouldn't for radius 0 if not there yet)
-            is_occupied_by_other = any(occ_id != entity_id for occ_id in occupants_at_target)
-
-            if is_occupied_by_other:
-                if self.event_log is not None:
-                    self.event_log.append({
-                        "type": "move_blocked_by_entity", "entity": entity_id,
-                        "target_pos": (new_x, new_y), "occupants": occupants_at_target,
-                        "tick": current_tick
-                    })
-                # --- LOGGING: Movement Blocked (Entity) ---
-                # print(f"[Tick {current_tick}] MovementSystem: Entity {entity_id} movement to ({new_x},{new_y}) blocked by other entity/entities: {occupants_at_target}. Stays at {original_pos_tuple}")
-                # --- END LOGGING ---
-                continue
+            move_blocked = False
+            if not (0 <= new_x < world_width and 0 <= new_y < world_height):
+                move_blocked = True
+                # print(f"[Tick {tick}] MovementSystem: Entity {entity_id} blocked by boundary.")
+            elif is_blocked((new_x, new_y)):
+                move_blocked = True
+                # print(f"[Tick {tick}] MovementSystem: Entity {entity_id} blocked by static obstacle at ({new_x},{new_y}).")
+            else:
+                occupants_at_target = index.query_radius((new_x, new_y), 0)
+                is_occupied_by_other = any(occ_id != entity_id for occ_id in occupants_at_target)
+                if is_occupied_by_other:
+                    move_blocked = True
+                    # print(f"[Tick {tick}] MovementSystem: Entity {entity_id} blocked by other entity at ({new_x},{new_y}). Occupants: {occupants_at_target}")
+                    if self.event_log is not None:
+                        self.event_log.append({
+                            "type": "move_blocked_by_entity", "entity": entity_id,
+                            "target_pos": (new_x, new_y), "occupants": occupants_at_target,
+                            "tick": tick
+                        })
+            
+            if move_blocked:
+                if ai_state:
+                    ai_state.last_bt_move_failed = True
+                    # print(f"[Tick {tick}] MovementSystem: Entity {entity_id} AIState.last_bt_move_failed set to True.")
+                # If movement from physics was blocked, PhysicsSystem should handle zeroing vx/vy.
+                # If from Velocity comp, this just prevents the move.
+                continue # Don't update position
 
             # If all checks pass, update position
             pos.x = new_x
             pos.y = new_y
+            if ai_state: # Successful move
+                ai_state.last_bt_move_failed = False
+                # print(f"[Tick {tick}] MovementSystem: Entity {entity_id} successful move. AIState.last_bt_move_failed set to False.")
+
 
             if original_pos_tuple != (pos.x, pos.y):
-                # --- LOGGING: Successful Move ---
-                print(f"[Tick {current_tick}] MovementSystem: Entity {entity_id} MOVED from {original_pos_tuple} to ({pos.x},{pos.y})")
-                # --- END LOGGING ---
-                # No need to remove from spatial index here if we batch update later.
-                # If updating one by one: index.remove(entity_id)
+                # print(f"[Tick {tick}] MovementSystem: Entity {entity_id} MOVED from {original_pos_tuple} to ({pos.x},{pos.y})")
                 batch_updates_for_spatial_index.append((entity_id, (pos.x, pos.y)))
 
-        # Batch update spatial index after all position changes for this tick
         if batch_updates_for_spatial_index:
-            # First remove all entities that moved from their old positions
-            for entity_id, _ in batch_updates_for_spatial_index:
-                index.remove(entity_id) # remove uses cached old position
-            # Then insert them at their new positions
+            for entity_id_moved, _ in batch_updates_for_spatial_index:
+                index.remove(entity_id_moved) 
             index.insert_many(batch_updates_for_spatial_index)
 
 

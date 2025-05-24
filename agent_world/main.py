@@ -1,4 +1,5 @@
-# agent_world/main.py
+
+# agent-god-action-simulator/agent_world/main.py
 """World bootstrap and minimal tick loop."""
 
 from __future__ import annotations
@@ -9,6 +10,8 @@ import threading
 import time
 import os
 import asyncio
+from agent_world.ai.angel.generator import GENERATED_DIR as ABILITIES_GENERATED_DIR # Add this import
+import shutil # Add this import
 
 from dotenv import load_dotenv
 
@@ -35,19 +38,21 @@ from .systems.ai.ai_reasoning_system import AIReasoningSystem
 try:
     from .systems.ai.action_execution_system import ActionExecutionSystem
 except ImportError:
-    ActionExecutionSystem = None
+    ActionExecutionSystem = None # Should not happen with correct file structure
 
 from .ai.llm.llm_manager import LLMManager
 from .persistence.save_load import load_world, save_world
 from .core.spatial.spatial_index import SpatialGrid
 from .persistence.incremental_save import start_incremental_save
 from .utils.cli.command_parser import poll_command, start_cli_thread, stop_cli_thread
-from .utils.cli.commands import execute, _install_gui_hook as install_gui_rendering_hook # Import specific hook
+from .utils.cli.commands import execute, _install_gui_hook as install_gui_rendering_hook
 from .gui.renderer import Renderer
 from .gui import input as gui_input
 from .core.components.position import Position
 from .core.components.health import Health
 from .core.components.physics import Physics
+from .core.components.ai_state import AIState # For goal setting in scenario
+from .systems.movement.pathfinding import set_obstacles, clear_obstacles # For scenario obstacles
 
 
 DEFAULT_SAVE_PATH = Path("saves/world_state.json.gz")
@@ -83,12 +88,7 @@ def bootstrap(config_path: str | Path = Path("config.yaml")) -> World:
     print(f"[Bootstrap] world.action_queue initialized: {world.action_queue is not None}")
     world.raw_actions_with_actor = []
     world.fps_enabled = False
-    
-    # --- MODIFICATION: GUI Enabled by Default ---
-    world.gui_enabled = True  # Set to True for GUI on by default
-    if world.gui_enabled:
-        print("[Bootstrap] GUI set to be enabled by default.")
-    # --- END MODIFICATION ---
+    world.gui_enabled = True # GUI enabled by default
 
     llm_cfg = cfg.get("llm", {})
     llm_api_key = os.getenv("OPENROUTER_API_KEY") or llm_cfg.get("api_key")
@@ -111,34 +111,39 @@ def bootstrap(config_path: str | Path = Path("config.yaml")) -> World:
 
     world.systems_manager = SystemsManager()
     sm = world.systems_manager
-    physics = PhysicsSystem(world)
-    movement = MovementSystem(world)
+    physics_sys = PhysicsSystem(world) # Renamed to avoid conflict with Physics component
+    movement_sys = MovementSystem(world) # Renamed
     perception_cfg = cfg.get("perception", {})
     view_radius = int(perception_cfg.get("view_radius", 10))
-    perception = PerceptionSystem(world, view_radius=view_radius)
+    perception_sys = PerceptionSystem(world, view_radius=view_radius) # Renamed
     combat_event_log: list[dict[str, Any]] = []
-    combat = CombatSystem(world, event_log=combat_event_log)
-    pickup = PickupSystem(world)
-    trading = TradingSystem(world)
-    stealing = StealingSystem(world)
+    combat_sys = CombatSystem(world, event_log=combat_event_log) # Renamed
+    pickup_sys = PickupSystem(world) # Renamed
+    trading_sys = TradingSystem(world) # Renamed
+    stealing_sys = StealingSystem(world) # Renamed
     crafting_event_log: list[dict[str, Any]] = []
-    crafting = CraftingSystem(world, event_log=crafting_event_log)
-    ability = AbilitySystem(world)
-    ai_reasoning = AIReasoningSystem(world, world.llm_manager_instance, world.raw_actions_with_actor)
+    crafting_sys = CraftingSystem(world, event_log=crafting_event_log) # Renamed
+    ability_sys = AbilitySystem(world) # Renamed
+    ai_reasoning_sys = AIReasoningSystem(world, world.llm_manager_instance, world.raw_actions_with_actor) # Renamed
 
-    sm.register(physics)
-    sm.register(movement)
-    sm.register(perception)
-    sm.register(combat)
-    sm.register(pickup)
-    sm.register(trading)
-    sm.register(stealing)
-    sm.register(crafting)
-    sm.register(ability)
-    sm.register(ai_reasoning)
+    sm.register(physics_sys)
+    sm.register(movement_sys)
+    sm.register(perception_sys)
+    sm.register(combat_sys)
+    sm.register(pickup_sys)
+    sm.register(trading_sys)
+    sm.register(stealing_sys)
+    sm.register(crafting_sys)
+    sm.register(ability_sys) # AbilitySystem needs to be registered
+    world.ability_system_instance = ability_sys # Store instance on world
+    sm.register(ai_reasoning_sys)
+
     if ActionExecutionSystem is not None:
-        action_execution_system_instance = ActionExecutionSystem(world, world.action_queue, combat)
+        action_execution_system_instance = ActionExecutionSystem(world, world.action_queue, combat_sys)
         sm.register(action_execution_system_instance)
+    else:
+        print("[Bootstrap CRITICAL] ActionExecutionSystem is None after import attempt.")
+
 
     world.generate_resources(seed=12345)
     print(f"[Bootstrap] Generated resources on the map.")
@@ -168,7 +173,6 @@ def load_or_bootstrap(
             world_shell.tile_map = loaded_world_from_file.tile_map
             if loaded_world_from_file.time_manager:
                  world_shell.time_manager.tick_counter = loaded_world_from_file.time_manager.tick_counter
-            # Load gui_enabled state from save file if present
             if hasattr(loaded_world_from_file, 'gui_enabled'):
                 world_shell.gui_enabled = loaded_world_from_file.gui_enabled
                 print(f"[Load] GUI enabled state loaded from save: {world_shell.gui_enabled}")
@@ -178,8 +182,8 @@ def load_or_bootstrap(
             batch: list[tuple[int, tuple[int, int]]] = []
             if world_shell.entity_manager and world_shell.component_manager:
                 for eid_int in list(world_shell.entity_manager.all_entities.keys()):
-                    pos = world_shell.component_manager.get_component(eid_int, Position)
-                    if pos is not None: batch.append((eid_int, (pos.x, pos.y)))
+                    pos_comp = world_shell.component_manager.get_component(eid_int, Position) # Renamed var
+                    if pos_comp is not None: batch.append((eid_int, (pos_comp.x, pos_comp.y)))
             if batch: world_shell.spatial_index.insert_many(batch)
             
             print(f"Successfully loaded state from {path} into world structure.")
@@ -205,7 +209,7 @@ def start_autosave(
         while True:
             time.sleep(interval) 
             if not world.time_manager: continue 
-            try: save_world(world, path) # save_world needs to handle world.gui_enabled
+            try: save_world(world, path)
             except Exception as exc: print(f"Auto-save failed: {exc}")
     t = threading.Thread(target=_loop, daemon=True, name="AutoSaveThread")
     t.start()
@@ -218,19 +222,17 @@ def start_autosave(
     return t
 
 
-
-# agent_world/main.py
-"""World bootstrap and minimal tick loop."""
-
-# ... (all existing imports) ...
-from .core.components.ai_state import AIState # Ensure AIState is imported for goal setting
-from .systems.movement.pathfinding import set_obstacles, clear_obstacles # For setting obstacles
-
-
-# ... (bootstrap, load_or_bootstrap, start_autosave functions remain the same) ...
-
-
 def main() -> None:
+    # +++ CLEAN GENERATED ABILITIES +++
+    if ABILITIES_GENERATED_DIR.exists():
+        for item in ABILITIES_GENERATED_DIR.iterdir():
+            if item.name != "__init__.py": # Don't delete __init__.py
+                if item.is_file():
+                    item.unlink()
+                elif item.is_dir(): # Should not happen, but good to be robust
+                    shutil.rmtree(item)
+        print(f"[Main Init] Cleared old files from {ABILITIES_GENERATED_DIR}")
+    # +++ END CLEAN +++
     pygame.init()
     pygame.font.init()
 
@@ -242,7 +244,7 @@ def main() -> None:
     if not all([world.time_manager, world.action_queue is not None,
                 world.raw_actions_with_actor is not None, world.systems_manager,
                 world.entity_manager, world.component_manager, world.spatial_index,
-                world.llm_manager_instance]):
+                world.llm_manager_instance, world.ability_system_instance]): # Added ability_system_instance check
         print("Critical Error: World not properly initialized! Exiting.")
         if pygame.get_init(): pygame.quit()
         return
@@ -252,13 +254,9 @@ def main() -> None:
 
     tm = world.time_manager
     actual_renderer = Renderer()
-    world.ability_system_instance = None # Ensure it's reset if world is reloaded
-    for system in world.systems_manager._systems: # Find and assign AbilitySystem instance
-        if isinstance(system, AbilitySystem):
-            world.ability_system_instance = system
-            break
+    # world.ability_system_instance is now set during bootstrap and load_or_bootstrap if AbilitySystem is registered.
     if not world.ability_system_instance:
-        print("[Main WARNING] AbilitySystem instance not found on world object after bootstrap!")
+        print("[Main WARNING] AbilitySystem instance not found on world object after bootstrap/load!")
 
 
     world_center_x = world.size[0] // 2
@@ -266,33 +264,45 @@ def main() -> None:
     actual_renderer.set_camera_center(float(world_center_x), float(world_center_y))
     print(f"Initial camera center set to: ({actual_renderer.camera_world_x}, {actual_renderer.camera_world_y})")
 
-    initial_spawn_state = {"renderer": actual_renderer}
+    initial_spawn_state = {"renderer": actual_renderer} # For GUI updates during spawn
 
-    # --- SCENARIO FOR ABILITY GENERATION ---
-    # Agent 2 starts at (50, 50)
-    agent2_id = execute("spawn", ["npc", str(world_center_x), str(world_center_y)], world, initial_spawn_state)
+    # --- SCENARIO FOR ABILITY GENERATION & PICKUP (Goal 2.1) ---
+    agent_start_x = world_center_x
+    agent_start_y = world_center_y
     
-    if agent2_id and world.component_manager:
-        ai_state_agent2 = world.component_manager.get_component(agent2_id, AIState)
-        if ai_state_agent2:
-            ai_state_agent2.goals = ["Acquire item 100"] # Specific goal
-            print(f"[Scenario] Agent {agent2_id} given goal: {ai_state_agent2.goals}")
+    # Spawn agent who needs the item
+    agent_id_scenario = execute("spawn", ["npc", str(agent_start_x), str(agent_start_y)], world, initial_spawn_state)
+    
+    item_target_x = agent_start_x
+    item_target_y = agent_start_y - 2 
+    item_id_scenario = execute("spawn", ["item", str(item_target_x), str(item_target_y)], world, initial_spawn_state)
 
-    # Item 100 at (50, 48) - two steps North
-    item_id_100 = execute("spawn", ["item", str(world_center_x), str(world_center_y - 2)], world, initial_spawn_state)
-    if item_id_100: # Ensure item ID is what we expect or update goal if not
-        if item_id_100 != 100 and agent2_id and world.component_manager: # Adjust goal if ID is different
-            ai_state_agent2 = world.component_manager.get_component(agent2_id, AIState)
-            if ai_state_agent2: ai_state_agent2.goals = [f"Acquire item {item_id_100}"]
+    if agent_id_scenario and item_id_scenario and world.component_manager:
+        ai_state_agent = world.component_manager.get_component(agent_id_scenario, AIState)
+        if ai_state_agent:
+            ai_state_agent.goals = [f"Acquire item {item_id_scenario}"] 
+            print(f"[Scenario] Agent {agent_id_scenario} at ({agent_start_x},{agent_start_y}) given goal: {ai_state_agent.goals}")
+        item_pos_comp = world.component_manager.get_component(item_id_scenario, Position)
+        if item_pos_comp:
+             print(f"[Scenario] Item {item_id_scenario} spawned at ({item_pos_comp.x},{item_pos_comp.y}) for Agent {agent_id_scenario}.")
+        else:
+             print(f"[Scenario WARNING] Item {item_id_scenario} spawned but has no Position component!")
 
-    # Obstacle at (50, 49) - directly between agent and item
-    obstacle_pos = (world_center_x, world_center_y - 1)
+    obstacle_pos = (agent_start_x, agent_start_y - 1) # Between agent and item
     set_obstacles([obstacle_pos])
     print(f"[Scenario] Obstacle placed at {obstacle_pos}")
-    
-    # Optional: Spawn a second NPC away from the scenario
-    # execute("spawn", ["npc", str(world_center_x + 10), str(world_center_y + 10)], world, initial_spawn_state)
     # --- END SCENARIO ---
+
+    # +++ ADD THIS DEBUG BLOCK in main() +++
+    print(f" agent id scenario: {agent_id_scenario}")
+    print(f" world component manager: {world.component_manager}")
+    if agent_id_scenario and world.component_manager:
+        final_check_ai_state = world.component_manager.get_component(agent_id_scenario, AIState)
+        if final_check_ai_state:
+            print(f"[[[[[ PRE-LOOP CHECK (main.py) Agent {agent_id_scenario} AIState ID: {id(final_check_ai_state)}, Goals: {final_check_ai_state.goals} ]]]]]")
+        else:
+            print(f"[[[[[ PRE-LOOP CHECK (main.py) Agent {agent_id_scenario} AIState NOT FOUND ]]]]]")
+    # +++ END DEBUG BLOCK +++
 
 
     if world.gui_enabled and actual_renderer:
@@ -305,12 +315,11 @@ def main() -> None:
 
     print("\nApplication started. CLI is active. Type /help for commands, or /gui to toggle display.")
 
-    last_debug_print_time = time.time()
+    # last_debug_print_time = time.time() # Keep if needed for other debug
     clock = pygame.time.Clock()
 
     try:
         while running:
-            # ... (main loop remains largely the same as your last provided version) ...
             gui_events_state = {
                 "paused": paused, "running": running,
                 "fps_enabled": world.fps_enabled, "renderer": actual_renderer
@@ -342,18 +351,15 @@ def main() -> None:
             if not running: break
 
             if not paused or step_once:
-                if world.raw_actions_with_actor:
-                    print(f"[Tick {tm.tick_counter}] MainLoop: Raw AI actions to process: {world.raw_actions_with_actor}")
-
                 if world.raw_actions_with_actor and world.action_queue is not None:
                     for actor_id, action_text in world.raw_actions_with_actor:
                        world.action_queue.enqueue_raw(actor_id, action_text)
                     world.raw_actions_with_actor.clear()
                 elif world.raw_actions_with_actor and world.action_queue is None:
-                    print(f"[Tick {tm.tick_counter}] MainLoop: CRITICAL - world.action_queue is None, cannot process raw actions.")
+                    print(f"[Tick {tm.tick_counter}] MainLoop: CRITICAL - world.action_queue is None.")
 
                 if world.systems_manager:
-                    world.systems_manager.update(world, tm.tick_counter)
+                    world.systems_manager.update(world, tm.tick_counter) # Pass world and tick
 
                 tm.sleep_until_next_tick() 
                 step_once = False
@@ -364,10 +370,6 @@ def main() -> None:
                     actual_renderer.window.refresh()
                 else: 
                     time.sleep(0.016) 
-
-            current_time = time.time()
-            # if current_time - last_debug_print_time >= 10.0: # Reduce log spam from this
-            #     last_debug_print_time = current_time
             
             clock.tick(60)
 
@@ -381,7 +383,7 @@ def main() -> None:
              cli_input_thread.join(timeout=1.0)
         if pygame.get_init():
             pygame.quit()
-        clear_obstacles() # Clean up obstacles for next run if app closes unexpectedly
+        clear_obstacles() # Clean up obstacles for next run
 
 if __name__ == "__main__":
     main()

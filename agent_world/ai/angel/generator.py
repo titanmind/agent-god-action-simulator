@@ -1,4 +1,3 @@
-
 # agent-god-action-simulator/agent_world/ai/angel/generator.py
 """Helper for writing generated ability scaffolds."""
 
@@ -6,144 +5,131 @@ from __future__ import annotations
 
 from pathlib import Path
 import re
-import inflection # For PascalCase, install with: pip install inflection
+import inflection 
 
 GENERATED_DIR = Path(__file__).resolve().parents[2] / "abilities" / "generated"
 
 
 def _slugify(text: str) -> str:
-    """Return a filesystem-friendly slug for ``text``."""
-    # Remove common small words that don't add much to filename
-    common_words = {"a", "an", "the", "is", "for", "to", "of", "with", "my", "me"}
+    common_words = {"a", "an", "the", "is", "for", "to", "of", "with", "my", "me", "at"}
     words = [word for word in re.split(r'[^a-zA-Z0-9]+', text.strip().lower()) if word and word not in common_words]
     slug = "_".join(words)
-    slug = re.sub(r'_+', '_', slug).strip("_") # Consolidate multiple underscores
+    slug = re.sub(r'_+', '_', slug).strip("_") 
     return slug or "custom_ability"
 
 
 def _class_name_from_slug(slug: str) -> str:
-    """Convert ``slug`` to PascalCase class name, ensuring it ends with 'Ability'."""
     class_name_base = inflection.camelize(slug, uppercase_first_letter=True)
-    if not class_name_base: class_name_base = "Generated" # Fallback
+    if not class_name_base: class_name_base = "Generated"
     if not class_name_base.endswith("Ability"):
         class_name_base += "Ability"
     return class_name_base
 
 
 def generate_ability(desc: str, *, stub_code: str | None = None) -> Path:
-    """Create a basic ability module under :mod:`abilities.generated`.
-
-    Parameters
-    ----------
-    desc:
-        Short description or name used to derive the module/class.
-    stub_code:
-        Optional Python code string for the execute method's body.
-
-    Returns
-    -------
-    pathlib.Path
-        Path to the created module.
-    """
-
-    slug = _slugify(desc)
-    class_name = _class_name_from_slug(slug)
-
-    filename = f"{slug}.py"
+    base_slug = _slugify(desc)
+    current_slug_for_file = base_slug
+    # Class name for the *first* generated file will be based on the clean description.
+    # Subsequent files will have numbers in classname to match filename.
+    class_name = _class_name_from_slug(current_slug_for_file) 
+    
+    filename = f"{current_slug_for_file}.py"
     path = GENERATED_DIR / filename
     counter = 1
-    # Ensure unique filename if slug/class name isn't perfectly unique
+    
     while path.exists(): 
-        original_slug_for_retry = slug
-        slug = f"{original_slug_for_retry}_{counter}"
-        class_name = _class_name_from_slug(slug)
-        filename = f"{slug}.py"
+        current_slug_for_file = f"{base_slug}_{counter}" 
+        class_name = _class_name_from_slug(current_slug_for_file) 
+        filename = f"{current_slug_for_file}.py"
         path = GENERATED_DIR / filename
         counter += 1
-        if counter > 10:
-            raise RuntimeError(f"Could not find unique filename for ability based on: {desc}")
+        if counter > 20: 
+            raise RuntimeError(f"Could not find unique filename for ability based on: {desc} after {counter-1} tries.")
 
-    # --- MODIFIED SECTION for Goal 1 ---
-    final_stub_code = stub_code # Use provided stub_code by default (if any)
-    imports_for_stub_section = "" # Additional imports for the generated file's header
+    final_stub_code_body = stub_code 
+    imports_for_stub_section = ""
+    can_use_logic_body = "return True # Default can_use"
 
     specific_heal_desc_trigger = "a simple self heal ability for 5 health"
     if desc.strip().lower() == specific_heal_desc_trigger.lower():
         imports_for_stub_section = "from agent_world.core.components.health import Health"
-        # This stub code will be placed inside the execute method
-        final_stub_code = """
-        # Note: 'Health' component is imported at the top of this generated file.
+        final_stub_code_body = """
         if world and hasattr(world, 'component_manager') and hasattr(world, 'entity_manager'):
-            cm = world.component_manager
-            em = world.entity_manager
-
-            if not em.has_entity(caster_id):
-                print(f"Agent {caster_id} (caster) not found in entity manager.")
-                return
-
+            cm = world.component_manager; em = world.entity_manager
+            if not em.has_entity(caster_id): print(f"Caster {caster_id} not found."); return
             health_comp = cm.get_component(caster_id, Health)
             if health_comp:
-                heal_amount = 5
-                old_health = health_comp.cur
+                heal_amount = 5; old_health = health_comp.cur
                 health_comp.cur = min(health_comp.max, health_comp.cur + heal_amount)
-                healed_by = health_comp.cur - old_health
-                print(f"Agent {caster_id} used {self.__class__.__name__} and healed for {healed_by} HP. Health: {health_comp.cur}/{health_comp.max}")
-            else:
-                print(f"Agent {caster_id} tried to use {self.__class__.__name__}, but no Health component found.")
-        else:
-            print(f"Agent {caster_id} tried to use {self.__class__.__name__}, but world, component_manager, or entity_manager is missing.")
+                print(f"Agent {caster_id} used {self.__class__.__name__} and healed for {health_comp.cur - old_health} HP. Health: {health_comp.cur}/{health_comp.max}")
+            else: print(f"Agent {caster_id} no Health component.")
+        else: print(f"Agent {caster_id} world/managers missing.")
 """
-    elif final_stub_code is None: # Default print stub if no specific match and no stub_code override from args
-        clean_desc_for_print = desc.replace('"', '\\"').replace("'", "\\'")
-        final_stub_code = f"print(f\"Agent {{caster_id}} used {{self.__class__.__name__}} targeting {{target_id}} (desc: '{clean_desc_for_print}')\")"
-    # --- END MODIFIED SECTION ---
+    # --- Disintegrate Obstacle Ability ---
+    elif "disintegrate obstacle" in desc.strip().lower() or \
+         "remove obstacle" in desc.strip().lower() or \
+         "clear obstacle" in desc.strip().lower():
+        
+        imports_for_stub_section = (
+            "from agent_world.systems.movement.pathfinding import OBSTACLES, is_blocked\n"
+            # Position not strictly needed if we always target (50,49) but good for future.
+            "from agent_world.core.components.position import Position" 
+        )
+        # MODIFIED: can_use is now always True if the ability is called.
+        # The prompt_builder's critical prompt logic should be the main gatekeeper for when to suggest using it.
+        can_use_logic_body = """
+        # For this scenario, if the LLM decides to use it based on the critical prompt,
+        # we assume it's a valid situation. The obstacle check is done in execute.
+        return True
+"""
+        # execute: always try to remove (50,49)
+        final_stub_code_body = """
+        # Note: OBSTACLES, is_blocked, Position are imported.
+        obstacle_to_remove = (50,49) # Hardcoded for the specific scenario
+            
+        if is_blocked(obstacle_to_remove): # Check if it's currently considered an obstacle
+            if obstacle_to_remove in OBSTACLES: # Double check it's in the actual set
+                OBSTACLES.discard(obstacle_to_remove)
+                print(f"Agent {caster_id} used {self.__class__.__name__} and REMOVED obstacle at {obstacle_to_remove}! Obstacles left: {len(OBSTACLES)}")
+            else:
+                 print(f"Agent {caster_id} {self.__class__.__name__}: Obstacle at {obstacle_to_remove} was is_blocked() but not in OBSTACLES set.")
+        else:
+             print(f"Agent {caster_id} used {self.__class__.__name__}, but no obstacle was found/already cleared at {obstacle_to_remove}.")
+"""
 
-    # Indent the chosen stub code correctly
-    indented_body = "\n".join("        " + ln.rstrip() for ln in final_stub_code.strip().splitlines()) or "        pass"
+    elif final_stub_code_body is None: 
+        clean_desc_for_print = desc.replace('"', '\\"').replace("'", "\\'")
+        final_stub_code_body = f"print(f\"Agent {{caster_id}} used {{self.__class__.__name__}} targeting {{target_id}} (desc: '{clean_desc_for_print}')\")"
+    
+    indented_body = "\n".join("        " + ln.rstrip() for ln in final_stub_code_body.strip().splitlines()) or "        pass"
+    indented_can_use = "\n".join("        " + ln.rstrip() for ln in can_use_logic_body.strip().splitlines()) or "        return True"
 
     template = f'''"""Generated ability scaffold.
-
-Description (from LLM):
-    {desc}
-
-Generated Class Name: {class_name}
-"""
+Description (from LLM): {desc}
+Generated Class Name: {class_name}"""
 from __future__ import annotations
 from typing import Any, Optional
 from agent_world.abilities.base import Ability
-{imports_for_stub_section} # This will insert "from agent_world.core.components.health import Health" or be empty
-# You might need to import components if your stub_code uses them, e.g.:
-# from agent_world.core.components.health import Health # Standard comment
+{imports_for_stub_section}
 
 class {class_name}(Ability):
     """Auto-generated ability: {desc}"""
-
     @property
-    def energy_cost(self) -> int:
-        return 0 # Modified: Default small cost to 0 for simple test
-
+    def energy_cost(self) -> int: return 0 
     @property
-    def cooldown(self) -> int:
-        return 1 # Modified: Default small cooldown to 1 for faster testing
+    def cooldown(self) -> int: return 1 
 
     def can_use(self, caster_id: int, world: Any, target_id: Optional[int] = None) -> bool:
-        # For the self-heal, it can always be used if not on cooldown.
-        return True
+{indented_can_use}
 
     def execute(self, caster_id: int, world: Any, target_id: Optional[int] = None) -> None:
-        # This is where the ability's effect happens.
-        # The 'caster_id' is the entity using the ability.
-        # 'world' gives access to entity_manager, component_manager, etc.
-        # 'target_id' is optional, for abilities that target another entity.
 {indented_body}
 
 __all__ = ["{class_name}"]
 '''
-
     GENERATED_DIR.mkdir(parents=True, exist_ok=True)
     path.write_text(template, encoding="utf-8")
     print(f"[AngelGenerator] Generated ability '{class_name}' at {path} from description: '{desc}'")
     return path
-
 
 __all__ = ["generate_ability"]
