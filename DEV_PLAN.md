@@ -228,17 +228,51 @@ Outline:
 • add `/follow <entity_id>` CLI command that calls `renderer.center_on_entity` each tick
 • implement actual centering logic in renderer; unit test via off-screen surface
 
-### Wave 5-B  (serial)
 
-Task 5-B-1
-Developer @dev-zoe
+## Phase 5.5 · Integration Glue
+
+Make the already-landed features actually run in-game before we begin Phase 6.
+
+### Wave 5.5-A
+
+Task 5.5-A-1
+Developer @dev-alice
 Files allowed:
-└─ agent\_world/systems/ai/actions.py
-└─ agent\_world/utils/cli/commands.py
-└─ tests/core/test\_no\_player\_constant.py
+└─ agent\_world/main.py
+└─ agent\_world/systems/ai/behavior\_tree\_system.py
 Outline:
-• remove `PLAYER_ID` constant; refactor remaining helper code to avoid special case
-• update affected tests
+• instantiate `behavior_tree_system = BehaviorTreeSystem(world)` inside **bootstrap** after movement system registration
+• `behavior_tree_system.register_tree("creature", build_creature_tree())`
+• `sm.register(behavior_tree_system)` and set `world.behavior_tree_system_instance = behavior_tree_system`
+• after creating `ability_sys`, set `world.ability_system_instance = ability_sys` if attribute missing
+
+Task 5.5-A-2
+Developer @dev-bob
+Files allowed:
+└─ tests/integration/test\_behavior\_tree\_integration.py
+Outline:
+• bootstrap a 5 × 5 world, spawn `npc:creature` at (1,1) plus dummy target at (2,1) with Health
+• advance one system tick; assert `world.raw_actions_with_actor` has an entry for the creature and action starts with `"USE_ABILITY"` or `"MOVE"`
+• assert any instance in `world.systems_manager._systems` is `BehaviorTreeSystem`
+
+Task 5.5-A-3
+Developer @dev-carol
+Files allowed:
+└─ agent\_world/utils/cli/command\_parser.py
+└─ tests/cli/test\_follow\_command\_parser.py
+Outline:
+• add `/follow` to command parser so it forwards `name="follow", args=[entity_id]` to `commands.execute`
+• unit-test parsing of string `"/follow 7"` returns expected Command object
+
+Task 5.5-A-4
+Developer @dev-dave
+Files allowed:
+└─ agent\_world/abilities/builtin/melee\_strike.py (create if absent)
+└─ tests/abilities/test\_melee\_strike\_exists.py
+Outline:
+• ensure a minimal `MeleeStrike` Ability subclass (cooldown 1, melee range check) lives in builtin directory
+• test `AbilitySystem(world).abilities` contains `"MeleeStrike"` after load
+
 
 ## Phase 6 · Observational Learning
 
