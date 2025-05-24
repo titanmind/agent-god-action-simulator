@@ -50,3 +50,32 @@ def test_ai_reasoning_enqueues_actions(monkeypatch):
     assert actions == ["ACK prompt-1", "ACK prompt-2"]
     assert all(t == 0.05 for _, t in llm.calls)
     assert built_prompts == [e1, e2]
+
+
+def test_ai_reasoning_fallback_when_wait(monkeypatch):
+    world = World((5, 5))
+    world.entity_manager = EntityManager()
+    world.component_manager = ComponentManager()
+
+    ent = world.entity_manager.create_entity()
+    world.component_manager.add_component(ent, AIState(personality="a"))
+
+    monkeypatch.setattr(
+        "agent_world.ai.llm.prompt_builder.build_prompt",
+        lambda agent_id, world_view: "prompt",
+        raising=False,
+    )
+
+    class DummyLLMManager:
+        def request(self, prompt: str, timeout: float) -> str:  # noqa: D401
+            return "<wait>"
+
+    from agent_world.systems.ai.behavior_tree import build_fallback_tree
+    from agent_world.systems.ai.ai_reasoning_system import AIReasoningSystem
+
+    llm = DummyLLMManager()
+    actions: list[str] = []
+    system = AIReasoningSystem(world, llm, actions, behavior_tree=build_fallback_tree())
+    system.update(tick=1)
+
+    assert actions == ["MOVE N"]
