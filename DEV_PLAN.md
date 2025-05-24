@@ -698,6 +698,123 @@ Outline:
 
 ---
 
+## Phase 18 · GUI Rendering + Input
+
+> Goal: replace the ASCII `/view` with an actual real-time window that
+> displays procedurally-generated sprites, UI overlays and supports pan / zoom / click.
+
+### Tech choice
+
+* **pygame** (SDL-based, pip-installable, cross-platform, hardware-accelerated, light).  
+* Pillow already supplies the sprites → convert `PIL.Image` → `pygame.Surface`.
+
+### Wave 18-A (3 parallel tasks)
+
+```
+
+Task 18-A-1
+Developer @dev-alice
+Files allowed:
+└─ agent\_world/gui/window\.py   (new)
+└─ pyproject.toml  (add `"pygame"` to dependencies)
+Outline:
+• Initialise `pygame` and open a resizable 800 × 600 window titled **Agent World**
+(use `config.yaml::window.size` if present).
+• Maintain `Window.screen` (main Surface) and a sprite cache that stores
+`entity_id → pygame.Surface`.
+• `Window.draw_sprite(entity_id, x, y, pil_image)` → blit cached Surface.
+• `Window.draw_text(text, x, y, colour=(255,255,255))` via `pygame.font`.
+• `Window.refresh()` flips the display and pumps `pygame.event.pump()`.
+
+Task 18-A-2
+Developer @dev-bob
+Files allowed:
+└─ agent\_world/gui/renderer.py   (new)
+└─ agent\_world/utils/observer.py (add FPS overlay hook)
+Outline:
+• Iterate entities with `Position`; fetch sprite via `sprite_gen.get_sprite()`
+then call `window.draw_sprite()`.
+• Draw optional FPS overlay (average from `observer._tick_durations`).
+• Implement camera panning with arrow keys and scroll-wheel zoom (read from
+`pygame.event.get()`).
+• `Renderer.update(world)` is called once per tick **after** all systems run.
+
+Task 18-A-3
+Developer @dev-charlie
+Files allowed:
+└─ agent\_world/utils/cli/command\_parser.py
+└─ agent\_world/utils/cli/commands.py
+Outline:
+• Add `/gui` command to toggle GUI at runtime (`state["gui_enabled"]`).
+• When enabled, inject `renderer.update()` into the main loop by wrapping
+`TimeManager.sleep_until_next_tick` (similar to TerminalView hook).
+
+```
+
+### Wave 18-B (after 18-A)
+
+```
+
+Task 18-B-1
+Developer @dev-dana
+Files allowed:
+└─ agent\_world/gui/input.py   (new)
+└─ agent\_world/systems/ai/actions.py
+Outline:
+• Translate left-click on an entity into `MOVE` or `ATTACK` debug actions for
+the special “player controller” entity (ID 0).
+• Hotkeys (via `pygame.KEYDOWN`):
+Space – pause/unpause
+F     – toggle live FPS overlay
+R     – reload abilities
+• Enqueue actions through the existing `ActionQueue` to keep determinism.
+
+Task 18-B-2
+Developer @dev-elliot
+Files allowed:
+└─ agent\_world/utils/asset\_generation/sprite\_gen.py
+Outline:
+• Add optional `outline_colour` parameter to `generate_sprite()`; when the GUI
+highlights a hovered/selected entity it requests the outlined version.
+• Cache outlined variants separately to avoid recreation churn.
+
+```
+
+
+---
+
+## Phase 19 · Full Content Loop Polish
+
+*These tasks are mostly “fit & finish” – you may choose to tackle them piecemeal
+while QA is hammering the GUI.*
+
+```
+
+Wave 19-A
+Task 19-A-1  (@dev-fay) – Particle / text popups on combat hits & crafting.
+Task 19-A-2  (@dev-glen) – Day/night colour-grading shader (just tint sprites).
+Wave 19-B
+Task 19-B-1  (@dev-hana) – Auto-spawn wandering NPCs every N ticks.
+Task 19-B-2  (@dev-ian) – Achievement/log panel (Tkinter Listbox docked right).
+
+```
+
+---
+
+## Phase 20 · Optional Extras (pick ’n mix)
+
+| Feature | Effort | Notes |
+|---------|--------|-------|
+| **WebSocket mirror** so spectators can watch from a browser | medium | 100 LOC aiohttp task; emits PNG sprite sheet + JSON world state |
+| **Replay GUI** (scrub through event log) | medium-high | Re-use the renderer; drive ticks from `replay.py` instead of live world |
+| **Scripting console** (`/py <expr>`) | low | Eval inside `utils.sandbox.run_in_sandbox` for safety |
+| **Mod-loader** (zipfile drop-ins) | medium | Load Python modules from `mods/`; same hot-reload thread can watch |
+| **Visual profiler** | low-medium | Use Tkinter `after()` to draw bar graph of last N tick times |
+
+None of the above are *required* for a “shippable” sandbox, but they add a lot
+of juice for almost no tech-risk because the foundations are already in place.
+
+---
 
 
 ### Completion Criteria

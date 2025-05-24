@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import json
+import time
 from collections import deque
 from pathlib import Path
-from typing import Deque
+from typing import Any, Deque
 
 from ..persistence.serializer import world_to_dict
 
@@ -48,6 +49,26 @@ def toggle_live_fps() -> bool:
     return _live_fps
 
 
+def install_tick_observer(tm: Any) -> None:
+    """Wrap ``tm.sleep_until_next_tick`` to record tick durations."""
+
+    if tm is None or hasattr(tm, "_observer_wrapped"):
+        return
+
+    original = tm.sleep_until_next_tick
+    last = time.perf_counter()
+
+    def wrapper() -> None:
+        nonlocal last
+        original()
+        now = time.perf_counter()
+        record_tick(now - last)
+        last = now
+
+    tm.sleep_until_next_tick = wrapper  # type: ignore[assignment]
+    setattr(tm, "_observer_wrapped", True)
+
+
 def dump_state(world: "World", path: str | Path) -> None:
     """Write ``world`` state to ``path`` as JSON for offline inspection."""
 
@@ -63,6 +84,7 @@ __all__ = [
     "record_tick",
     "print_fps",
     "toggle_live_fps",
+    "install_tick_observer",
     "dump_state",
     "_tick_durations",
 ]
