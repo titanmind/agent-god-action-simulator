@@ -15,6 +15,8 @@ from .core.component_manager import ComponentManager
 from .core.time_manager import TimeManager
 from .systems.ai.actions import ActionQueue
 from .persistence.save_load import load_world, save_world
+from .utils.cli.command_parser import poll_command
+from .utils.cli.commands import execute
 
 
 DEFAULT_SAVE_PATH = Path("saves/world_state.json.gz")
@@ -42,7 +44,8 @@ def bootstrap(config_path: str | Path = Path("config.yaml")) -> World:
 
 
 def load_or_bootstrap(
-    save_path: str | Path = DEFAULT_SAVE_PATH, config_path: str | Path = Path("config.yaml")
+    save_path: str | Path = DEFAULT_SAVE_PATH,
+    config_path: str | Path = Path("config.yaml"),
 ) -> World:
     """Load the world from ``save_path`` if present, else call :func:`bootstrap`."""
 
@@ -67,7 +70,11 @@ def load_or_bootstrap(
     return bootstrap(config_path)
 
 
-def start_autosave(world: World, save_path: str | Path = DEFAULT_SAVE_PATH, interval: float = AUTO_SAVE_INTERVAL) -> None:
+def start_autosave(
+    world: World,
+    save_path: str | Path = DEFAULT_SAVE_PATH,
+    interval: float = AUTO_SAVE_INTERVAL,
+) -> None:
     """Start a daemon thread that periodically saves ``world`` to ``save_path``."""
 
     path = Path(save_path)
@@ -94,11 +101,22 @@ def main() -> None:
     tm = world.time_manager
     actions = ActionQueue()  # AI HOOK: queue for parsed actions
     assert tm is not None
+    paused = False
+    step_once = False
     for _ in range(10):
-        print(f"tick {tm.tick_counter}")
-        tm.sleep_until_next_tick()
+        cmd = poll_command()
+        if cmd:
+            state = {"paused": paused, "step": False}
+            execute(cmd.name, cmd.args, world, state)
+            paused = state["paused"]
+            step_once = state.get("step", False) or step_once
+        if not paused or step_once:
+            print(f"tick {tm.tick_counter}")
+            tm.sleep_until_next_tick()
+            step_once = False
+        else:  # idle while paused
+            time.sleep(0.01)
 
 
 if __name__ == "__main__":
     main()
-
