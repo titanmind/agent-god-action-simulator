@@ -78,7 +78,7 @@ Task outline:
   • Tick loop helpers: tick_rate, tick_counter, sleep_until_next_tick().
   • Blocking sleep only; unit test in file.
 
-Task 1-C-2
+✓ Task 1-C-2
 Developer @dev-glen
 Files allowed to edit:
   └─ agent_world/core/spatial/spatial_index.py
