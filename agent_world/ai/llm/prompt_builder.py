@@ -14,8 +14,9 @@ import asyncio
 from ...core.world import World
 from ...core.components.position import Position
 from ...core.components.health import Health 
-from ...core.components.inventory import Inventory 
+from ...core.components.inventory import Inventory
 from ...core.components.ai_state import AIState
+from ...core.components.role import RoleComponent
 from ...core.components.perception_cache import PerceptionCache
 from ...systems.interaction.pickup import Tag 
 from ...systems.ai.actions import PLAYER_ID 
@@ -97,6 +98,9 @@ def build_prompt(agent_id: int, world: World, *, memory_k: int = 5) -> str:
     if ability_system_instance and ability_system_instance.abilities:
         known_ability_names = sorted([name for name in ability_system_instance.abilities.keys()])
         if known_ability_names: my_known_abilities_str = ", ".join(known_ability_names)
+
+    role_comp = cm.get_component(agent_id, RoleComponent)
+    can_request_abilities = role_comp.can_request_abilities if role_comp else True
 
     # --- Determine Critical Advice ---
     critical_advice_text = ""
@@ -255,8 +259,8 @@ Your Action to address the CRITICAL SITUATION:"""
     my_personality = agent_ai_state.personality if agent_ai_state else "default"
     last_bt_move_failed_status = agent_ai_state.last_bt_move_failed if agent_ai_state else False
     
-    dynamic_advice_lines = [] 
-    if last_bt_move_failed_status and my_goals_list: 
+    dynamic_advice_lines = []
+    if last_bt_move_failed_status and my_goals_list and can_request_abilities:
         dynamic_advice_lines.append("Your last automatic movement was blocked. If an obstacle hinders your goals, consider `GENERATE_ABILITY`.")
     if my_known_abilities_str != "None":
         dynamic_advice_lines.append("Review your 'known abilities'. Can any help achieve goals or overcome obstacles?")
@@ -271,39 +275,51 @@ Your Action to address the CRITICAL SITUATION:"""
         advice_text = "\n".join([f"- {line}" for line in dynamic_advice_lines])
         dynamic_advice_section = f"Considerations for This Turn:\n{advice_text}"
     
-    base_instructions = f"""You are Agent {agent_id}. Your personality is "{my_personality}".
-Your current position is {current_pos_str}. The world is a grid of size {world_width}x{world_height}.
-Player (ID {PLAYER_ID}) is controlled by a human.
+    base_lines = [
+        f"You are Agent {agent_id}. Your personality is \"{my_personality}\".",
+        f"Your current position is {current_pos_str}. The world is a grid of size {world_width}x{world_height}.",
+        f"Player (ID {PLAYER_ID}) is controlled by a human.",
+        "",
+        "Your primary directive is to achieve your goals. Use exploration and interaction intelligently.",
+        "If you are at a world boundary, DO NOT try to move further in that direction.",
+    ]
+    if can_request_abilities:
+        base_lines.append('If you need a new skill for your goals or to overcome an obstacle, use "GENERATE_ABILITY <description>".')
+    base_lines.append('After an ability is generated (it will appear in \"Abilities You Know\" next turn), you can use "USE_ABILITY <AbilityClassName>".')
+    base_lines.append('Formulate a plan or a single action. If you plan multiple steps, use LOG for the plan then take the first step.')
+    base_instructions = "\n".join(base_lines)
 
-Your primary directive is to achieve your goals. Use exploration and interaction intelligently.
-If you are at a world boundary, DO NOT try to move further in that direction.
-If you need a new skill for your goals or to overcome an obstacle, use "GENERATE_ABILITY <description>".
-After an ability is generated (it will appear in 'Abilities You Know' next turn), you can use "USE_ABILITY <AbilityClassName>".
-Formulate a plan or a single action. If you plan multiple steps, use LOG for the plan then take the first step.
-"""
-    action_list_text = """
-Available Actions (Strictly respond with ONLY ONE action string, OR a LOG action followed by another action on a new line):
-- "LOG <message>" (e.g., "LOG I see item 7 at (10,12).")
-- "MOVE <N|S|E|W>" (e.g., "MOVE N")
-- "ATTACK <target_id>" (e.g., "ATTACK 15")
-- "IDLE"
-- "GENERATE_ABILITY <description>" (e.g., "GENERATE_ABILITY create healing potion")
-- "USE_ABILITY <AbilityClassName> [target_id]" (e.g., "USE_ABILITY MeleeStrike 15")
-- "PICKUP <item_id>" (e.g., "PICKUP 4")
-"""
+    action_lines = [
+        "Available Actions (Strictly respond with ONLY ONE action string, OR a LOG action followed by another action on a new line):",
+        '- "LOG <message>" (e.g., "LOG I see item 7 at (10,12).")',
+        '- "MOVE <N|S|E|W>" (e.g., "MOVE N")',
+        '- "ATTACK <target_id>" (e.g., "ATTACK 15")',
+        '- "IDLE"',
+    ]
+    if can_request_abilities:
+        action_lines.append('- "GENERATE_ABILITY <description>" (e.g., "GENERATE_ABILITY create healing potion")')
+    action_lines.extend([
+        '- "USE_ABILITY <AbilityClassName> [target_id]" (e.g., "USE_ABILITY MeleeStrike 15")',
+        '- "PICKUP <item_id>" (e.g., "PICKUP 4")',
+    ])
+    action_list_text = "\n".join(action_lines)
+
+    focus_lines = ["--- FOCUS FOR THIS TURN ---", f"YOUR CURRENT GOALS: {my_goals_str}"]
+    if can_request_abilities:
+        focus_lines.append(f"ABILITIES YOU KNOW: {my_known_abilities_str}")
+    if dynamic_advice_section:
+        focus_lines.append(dynamic_advice_section)
+    focus_lines.append("--- END FOCUS ---")
+    focus_section = "\n".join(focus_lines)
+
     prompt = f"""{base_instructions}
 --- Current World State for Agent {agent_id} (Tick: {tm.tick_counter if tm else 'N/A'}) ---
 {serialized_view}
 {mem_section}
 
---- FOCUS FOR THIS TURN ---
-YOUR CURRENT GOALS: {my_goals_str}
-ABILITIES YOU KNOW: {my_known_abilities_str}
-{dynamic_advice_section} 
---- END FOCUS ---
+{focus_section}
 {action_list_text}
 Based on your GOALS and current situation, what is Your Action:"""
-    
     current_tick_for_log = tm.tick_counter if tm else "N/A"
     print(f"\n--- [PromptBuilder Agent {agent_id} Tick {current_tick_for_log}] FULL STANDARD PROMPT SENT ---")
     print(prompt)
