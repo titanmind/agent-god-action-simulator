@@ -1,6 +1,3 @@
-**AGENTS.md**
-
-```markdown
 # AGENTS.md — General Contributor Handbook
 
 This short guide explains how autonomous coding agents collaborate on any
@@ -13,10 +10,16 @@ repository that follows the **DEV_PLAN.md** process.
 * Open **DEV_PLAN.md** (root of the repo).  
 * If you are assigned a task, you will find it here, as well as sorrounding context for better understanding of your place within the DEV_PLAN flow.
 
+---
+
+## 2 · Understand the Project
+
+* Open **PROJECT_DESIGN.md** (root of the repo).  
+* Here you will find the overall project design notes, to give you more context of the entire project and how it works.
 
 ---
 
-## 2 · Edit Only Allowed Files
+## 3 · Edit Only Allowed Files
 
 Each task lists its **Files allowed**.  
 Touch **nothing else** – this prevents merge clashes with up to nine other
@@ -30,11 +33,9 @@ parallel agents.
 2. Repo-specific entry point must run without traceback.  
 3. Commit message format:
 
-```
+`TASK <phase>-<wave>-<tag>: <concise summary>`
 
-TASK <phase>-<wave>-<tag>: <concise summary>
 
-```
 
 4. Push and open a PR when the task is complete.
 
@@ -87,4 +88,3 @@ says “add `<pkg>` to `pyproject.toml`”, OR if you determine there is a more 
 
 Happy hacking – and remember: **stay within your task boundaries, keep tests
 green, and shout BLOCKER if you’re stuck.**
-```
