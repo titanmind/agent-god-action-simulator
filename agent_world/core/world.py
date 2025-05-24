@@ -4,11 +4,14 @@
 from __future__ import annotations
 
 from typing import Any, List, Tuple, TYPE_CHECKING
+import asyncio
+import threading
 
 from ..utils.asset_generation import noise
 
 if TYPE_CHECKING:
-    from ..systems.ai.actions import ActionQueue # Forward reference for type hint
+    from ..systems.ai.actions import ActionQueue  # Forward reference for type hint
+    from ..ai.llm.llm_manager import LLMManager
 
 
 class World:
@@ -31,6 +34,11 @@ class World:
         # For action processing
         self.action_queue: ActionQueue | None = None
         self.raw_actions_with_actor: List[Tuple[int, str]] | None = None # Stores (actor_id, action_string)
+
+        # For LLM integration
+        self.llm_manager_instance: "LLMManager" | None = None
+        self.async_llm_responses: dict[str, asyncio.Future[str]] = {}
+        self.llm_processing_thread: threading.Thread | None = None
 
         # For GUI state
         self.gui_enabled: bool = False
