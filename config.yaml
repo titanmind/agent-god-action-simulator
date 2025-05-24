@@ -4,7 +4,7 @@ world:
   max_entities: 8000
 
 llm:
-  mode: live
+  mode: offline
 
 cache:
   sprite_max: 10000      # max images in RAM

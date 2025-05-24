@@ -29,13 +29,10 @@ parallel agents.
 
 ## 4 · Local Workflow
 
-1. `pytest -q` early & often – test coverage must stay **≥ 95 %**.  
 2. Repo-specific entry point must run without traceback.  
 3. Commit message format:
 
 `TASK <phase>-<wave>-<tag>: <concise summary>`
-
-
 
 4. Push and open a PR when the task is complete.
 
@@ -71,9 +68,8 @@ BLOCKER <phase>-<wave>-<task>
 ## 7 · Deterministic LLM & Tests
 
 * The default configuration sets `llm.mode = offline`.  
-* Tests may monkey-patch `LLMManager.request` for scripted replies (see
-**tests/conftest.py**).  
-* **Do not** hit external APIs in CI.
+
+* Tests are good, but mostly you should verify functioanlity with robust consoel logging to verify shit is working.
 
 ---
 
@@ -85,6 +81,3 @@ says “add `<pkg>` to `pyproject.toml`”, OR if you determine there is a more 
 * Use type hints where practical.
 
 ---
-
-Happy hacking – and remember: **stay within your task boundaries, keep tests
-green, and shout BLOCKER if you’re stuck.**
