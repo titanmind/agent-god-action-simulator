@@ -3,10 +3,32 @@
 from __future__ import annotations
 
 from heapq import heappop, heappush
-from typing import Dict, List, Tuple
+from typing import Dict, Iterable, List, Set, Tuple
 
 
 Coord = Tuple[int, int]
+
+# Global obstacle coordinates used by movement and pathfinding.
+OBSTACLES: Set[Coord] = set()
+
+
+def set_obstacles(obstacles: Iterable[Coord]) -> None:
+    """Replace the global obstacle set."""
+
+    OBSTACLES.clear()
+    OBSTACLES.update(obstacles)
+
+
+def clear_obstacles() -> None:
+    """Remove all obstacles from the grid."""
+
+    OBSTACLES.clear()
+
+
+def is_blocked(node: Coord) -> bool:
+    """Return ``True`` if ``node`` is blocked."""
+
+    return node in OBSTACLES
 
 
 def _heuristic(a: Coord, b: Coord) -> float:
@@ -19,10 +41,11 @@ def _heuristic(a: Coord, b: Coord) -> float:
 
 
 def _neighbors(node: Coord) -> List[Coord]:
-    """Return the cardinal neighbours of ``node``."""
+    """Return the walkable cardinal neighbours of ``node``."""
 
     x, y = node
-    return [(x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)]
+    candidates = [(x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)]
+    return [c for c in candidates if not is_blocked(c)]
 
 
 def _reconstruct(came_from: Dict[Coord, Coord], current: Coord) -> List[Coord]:
@@ -43,6 +66,9 @@ def a_star(start: Coord, goal: Coord) -> List[Coord]:
 
     if start == goal:
         return [start]
+
+    if is_blocked(start) or is_blocked(goal):
+        return []
 
     open_set: List[Tuple[float, float, Coord]] = []
     heappush(open_set, (_heuristic(start, goal), 0.0, start))
@@ -75,5 +101,9 @@ def a_star(start: Coord, goal: Coord) -> List[Coord]:
     return []
 
 
-__all__ = ["a_star"]
-
+__all__ = [
+    "a_star",
+    "set_obstacles",
+    "clear_obstacles",
+    "is_blocked",
+]
