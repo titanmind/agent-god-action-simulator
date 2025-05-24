@@ -22,7 +22,7 @@ from .core.world import World
 from .core.entity_manager import EntityManager
 from .core.component_manager import ComponentManager
 from .core.time_manager import TimeManager
-from .systems.ai.actions import ActionQueue, PLAYER_ID
+from .systems.ai.actions import ActionQueue
 from .core.systems_manager import SystemsManager
 from .systems.movement.physics_system import PhysicsSystem
 from .systems.movement.movement_system import MovementSystem
@@ -49,9 +49,7 @@ from .utils.cli.commands import execute, _install_gui_hook as install_gui_render
 from .gui.renderer import Renderer
 from .gui import input as gui_input
 from .core.components.position import Position
-from .core.components.health import Health
-from .core.components.physics import Physics
-from .core.components.ai_state import AIState # For goal setting in scenario
+from .core.components.ai_state import AIState  # For goal setting in scenario
 from .systems.movement.pathfinding import set_obstacles, clear_obstacles # For scenario obstacles
 
 
@@ -98,16 +96,6 @@ def bootstrap(config_path: str | Path = Path("config.yaml")) -> World:
     if llm.mode == "live" and world.llm_manager_instance and not llm.offline:
         world.llm_manager_instance.start_processing_loop(world)
 
-    if not world.entity_manager.has_entity(PLAYER_ID):
-        if PLAYER_ID not in world.entity_manager._entity_components:
-             world.entity_manager._entity_components[PLAYER_ID] = {}
-             world.entity_manager._next_id = max(world.entity_manager._next_id, PLAYER_ID +1)
-
-    player_pos = (size[0] // 2 - 5, size[1] // 2)
-    world.component_manager.add_component(PLAYER_ID, Position(*player_pos))
-    world.component_manager.add_component(PLAYER_ID, Health(cur=100,max=100))
-    world.component_manager.add_component(PLAYER_ID, Physics(mass=1.0, vx=0.0, vy=0.0, friction=0.95))
-    world.spatial_index.insert(PLAYER_ID, player_pos)
 
     world.systems_manager = SystemsManager()
     sm = world.systems_manager
