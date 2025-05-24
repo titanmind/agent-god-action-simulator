@@ -41,3 +41,5 @@ out/
 *.env
 
 uv.lock
+
+*.json.gz

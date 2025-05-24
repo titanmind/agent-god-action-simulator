@@ -4,12 +4,11 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from ..base import Ability
-from ...core.components.position import Position
-from ...core.components.inventory import Inventory
-from ...systems.combat.combat_system import CombatSystem
-from ...systems.perception.line_of_sight import has_line_of_sight
-
+from agent_world.abilities.base import Ability
+from agent_world.core.components.position import Position
+from agent_world.core.components.inventory import Inventory
+from agent_world.systems.combat.combat_system import CombatSystem
+from agent_world.systems.perception.line_of_sight import has_line_of_sight
 
 class ArrowShot(Ability):
     """Shoot the nearest visible target and consume one ammo item."""

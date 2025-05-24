@@ -56,7 +56,7 @@ Description:
     {desc}
 """
 
-from ..base import Ability
+from agent_world.abilities.base import Ability
 
 
 class {class_name}(Ability):
