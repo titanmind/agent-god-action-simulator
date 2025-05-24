@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Dict, List
 
 from .pathfinding import is_blocked
 
@@ -22,8 +22,11 @@ class Velocity:
 class MovementSystem:
     """Update entity positions based on attached :class:`Velocity`."""
 
-    def __init__(self, world: Any) -> None:
+    def __init__(
+        self, world: Any, event_log: List[Dict[str, Any]] | None = None
+    ) -> None:
         self.world = world
+        self.event_log = event_log if event_log is not None else []
 
     # ------------------------------------------------------------------
     # Public API
@@ -59,13 +62,26 @@ class MovementSystem:
             new_x = pos.x + dx
             new_y = pos.y + dy
             width, height = size
-            if (
+            if not (
                 0 <= new_x < width
                 and 0 <= new_y < height
                 and not is_blocked((new_x, new_y))
             ):
-                pos.x = new_x
-                pos.y = new_y
+                continue
+
+            occupied = index.query_radius((new_x, new_y), 0)
+            if occupied:
+                self.event_log.append(
+                    {
+                        "type": "move_blocked",
+                        "entity": entity_id,
+                        "pos": (new_x, new_y),
+                    }
+                )
+                continue
+
+            pos.x = new_x
+            pos.y = new_y
 
             if old_pos != (pos.x, pos.y):
                 index.remove(entity_id)

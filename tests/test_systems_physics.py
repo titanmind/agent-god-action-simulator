@@ -6,6 +6,7 @@ from agent_world.core.components.physics import Physics
 from agent_world.systems.movement.physics_system import PhysicsSystem, Force
 from agent_world.systems.movement.pathfinding import set_obstacles, clear_obstacles
 from agent_world.core.spatial.spatial_index import SpatialGrid
+from typing import Any
 
 
 def _make_world():
@@ -34,7 +35,8 @@ def test_force_integration():
 
 def test_collision_zeroes_velocity():
     world = _make_world()
-    phys_sys = PhysicsSystem(world)
+    log: list[dict[str, Any]] = []
+    phys_sys = PhysicsSystem(world, event_log=log)
 
     e = world.entity_manager.create_entity()
     world.component_manager.add_component(e, Position(0, 0))
@@ -49,3 +51,4 @@ def test_collision_zeroes_velocity():
 
     phys = world.component_manager.get_component(e, Physics)
     assert phys.vx == 0.0 and phys.vy == 0.0
+    assert log[-1] == {"type": "collision", "entity": e, "pos": (1, 0)}

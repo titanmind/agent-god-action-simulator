@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Dict, List
 
 from .pathfinding import is_blocked
 from ...core.components.position import Position
@@ -21,8 +21,11 @@ class Force:
 class PhysicsSystem:
     """Update :class:`Physics` components from accumulated :class:`Force` values."""
 
-    def __init__(self, world: Any) -> None:
+    def __init__(
+        self, world: Any, event_log: List[Dict[str, Any]] | None = None
+    ) -> None:
         self.world = world
+        self.event_log = event_log if event_log is not None else []
 
     # ------------------------------------------------------------------
     # Main update
@@ -63,6 +66,13 @@ class PhysicsSystem:
             ):
                 phys.vx = 0.0
                 phys.vy = 0.0
+                self.event_log.append(
+                    {
+                        "type": "collision",
+                        "entity": entity_id,
+                        "pos": (next_x, next_y),
+                    }
+                )
 
 
 __all__ = ["Force", "PhysicsSystem"]
