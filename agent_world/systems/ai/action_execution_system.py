@@ -18,9 +18,9 @@ from .actions import (
 )
 from ..combat.combat_system import CombatSystem
 from ...core.components.force import apply_force
-from ...core.components.physics import Physics 
-from ...systems.movement.movement_system import Velocity 
-from ...ai.angel import generator as angel_generator # <<< IMPORTED angel_generator
+from ...core.components.physics import Physics
+from ...systems.movement.movement_system import Velocity
+from ...ai.angel import generator as angel_generator
 from ...systems.ability.ability_system import AbilitySystem # <<< For finding AbilitySystem
 
 class ActionExecutionSystem:
@@ -84,14 +84,17 @@ class ActionExecutionSystem:
             elif isinstance(action, GenerateAbilityAction):
                 self.world.paused_for_angel = True
                 try:
-                    generated_path = angel_generator.generate_ability(action.description)
+                    if hasattr(self.world, "get_angel_system"):
+                        result = self.world.get_angel_system().generate_and_grant(
+                            action.actor, action.description
+                        )
+                    else:
+                        result = angel_generator.generate_ability(action.description)
                     log_msg = (
                         f"Agent {action.actor} requested generation of ability: '{action.description}'. "
-                        f"File created: {generated_path}"
+                        f"Result: {result}"
                     )
                     print(f"[Tick {tick}][ActionExec] {log_msg}")
-                    # Optional: Log this as a game event too via world.event_log or similar
-                    # self.world.event_log.append({"type": "ability_generated", "tick": tick, "actor": action.actor, "description": action.description, "path": str(generated_path)})
                 except Exception as e:
                     error_msg = (
                         f"Error during ability generation for agent {action.actor} "
