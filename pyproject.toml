@@ -11,6 +11,7 @@ dependencies = [
     "pillow>=11.2.1",
     "pygame>=2.6.1",
     "pytest>=8.3.5",
+    "python-dotenv>=1.1.0",
     "pyyaml>=6.0.2",
     "restrictedpython>=8.0",
 ]
