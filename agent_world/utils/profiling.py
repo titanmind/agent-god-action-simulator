@@ -47,4 +47,25 @@ def profile_ticks(
     return pstats.Stats(profiler)
 
 
-__all__ = ["profile_ticks"]
+async def profile_async(
+    n: int,
+    async_callback: Callable[[], "Awaitable[None]"],
+    out_path: str | Path = "profile.prof",
+) -> pstats.Stats:
+    """Profile ``async_callback`` running ``n`` times with ``cProfile``."""
+
+    path = Path(out_path)
+    profiler = cProfile.Profile()
+    profiler.enable()
+    last = time.perf_counter()
+    for _ in range(n):
+        await async_callback()
+        now = time.perf_counter()
+        record_tick(now - last)
+        last = now
+    profiler.disable()
+    profiler.dump_stats(str(path))
+    return pstats.Stats(profiler)
+
+
+__all__ = ["profile_ticks", "profile_async"]

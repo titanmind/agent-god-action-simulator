@@ -67,6 +67,19 @@ def a_star(start: Coord, goal: Coord) -> List[Coord]:
     if start == goal:
         return [start]
 
+    if not OBSTACLES:
+        x0, y0 = start
+        x1, y1 = goal
+        path = [(x0, y0)]
+        x, y = x0, y0
+        while x != x1:
+            x += 1 if x1 > x else -1
+            path.append((x, y))
+        while y != y1:
+            y += 1 if y1 > y else -1
+            path.append((x, y))
+        return path
+
     if is_blocked(start) or is_blocked(goal):
         return []
 

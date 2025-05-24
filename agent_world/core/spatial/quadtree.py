@@ -14,6 +14,9 @@ class Quadtree:
     def insert(self, entity_id: int, pos: Tuple[int, int]) -> None:
         self._grid.insert(entity_id, pos)
 
+    def insert_many(self, items: List[Tuple[int, Tuple[int, int]]]) -> None:
+        self._grid.insert_many(items)
+
     def remove(self, entity_id: int) -> None:
         self._grid.remove(entity_id)
 
