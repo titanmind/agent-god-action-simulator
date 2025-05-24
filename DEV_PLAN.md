@@ -103,7 +103,7 @@ Task outline:
   • Move entities with Position & Velocity (define Velocity dataclass here).
   • Update spatial index.
 
-Task 2-A-2
+✓ Task 2-A-2
 Developer @dev-ian
 Files allowed to edit:
   └─ agent_world/systems/movement/pathfinding.py
