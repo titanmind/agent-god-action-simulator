@@ -11,6 +11,7 @@ from .core.world import World
 from .core.entity_manager import EntityManager
 from .core.component_manager import ComponentManager
 from .core.time_manager import TimeManager
+from .systems.ai.actions import ActionQueue
 
 
 def bootstrap(config_path: str | Path = Path("config.yaml")) -> World:
@@ -38,6 +39,7 @@ def main() -> None:
 
     world = bootstrap()
     tm = world.time_manager
+    actions = ActionQueue()  # AI HOOK: queue for parsed actions
     assert tm is not None
     for _ in range(10):
         print(f"tick {tm.tick_counter}")
