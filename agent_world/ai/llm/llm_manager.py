@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import os
+import socket
 from typing import Tuple
 
 from .cache import LLMCache
@@ -11,16 +13,38 @@ from .cache import LLMCache
 class LLMManager:
     """Manage prompt requests through an async queue with caching."""
 
-    def __init__(self, cache_size: int = 1000, queue_max: int = 128) -> None:
+    def __init__(
+        self,
+        cache_size: int = 1000,
+        queue_max: int = 128,
+        *,
+        api_key: str | None = None,
+        model: str | None = None,
+    ) -> None:
+        self.api_key = api_key or os.getenv("OPENROUTER_API_KEY")
+        self.model = model or os.getenv("OPENROUTER_MODEL")
+
+        self.offline = False
+        if not self.api_key or not self.model:
+            self.offline = True
+        else:
+            try:
+                socket.gethostbyname("openrouter.ai")
+            except OSError:
+                self.offline = True
+
         self.cache = LLMCache(capacity=cache_size)
         self.queue: asyncio.Queue[Tuple[str, asyncio.Future[str]]] = asyncio.Queue(
             maxsize=queue_max
         )
 
+        if not self.offline:
+            print(f"LLM online: {self.model}")
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
-    def request(self, prompt: str) -> str:
+    def request(self, prompt: str, timeout: float | None = None) -> str:
         """Enqueue ``prompt`` if not cached; return cached response or ``"<wait>"``."""
 
         cached = self.cache.get(prompt)
