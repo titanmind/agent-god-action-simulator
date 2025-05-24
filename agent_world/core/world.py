@@ -42,6 +42,7 @@ class World:
 
         # For GUI state
         self.gui_enabled: bool = False
+        self.paused_for_angel: bool = False
 
         # Pre-computed glyph/colour data for resource types
         self._resource_defs = {
