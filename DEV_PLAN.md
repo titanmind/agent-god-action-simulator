@@ -399,7 +399,7 @@ Outline:
 ```
 Wave 9-B  (after 9-A)
 
-Task 9-B-1
+✓ Task 9-B-1
 Developer @dev-glen
 Files:
   └─ agent_world/systems/ai/behavior_tree.py
