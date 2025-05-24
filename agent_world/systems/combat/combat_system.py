@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import random
 from typing import Any, List, Dict
 
 from ...core.components.position import Position
 from ...core.components.health import Health
 from ..combat.damage_types import DamageType
+from ..combat.defense import Defense, armor_vs, dodge_vs
 
 
 class CombatSystem:
@@ -58,18 +60,36 @@ class CombatSystem:
         if hp is None:
             return False
 
-        hp.cur = max(hp.cur - 10, 0)
+        base_damage = 10
+        defense = cm.get_component(target, Defense)
+        dodged = False
+        if defense is not None and random.random() < dodge_vs(defense, damage_type):
+            damage = 0
+            dodged = True
+        else:
+            armor = armor_vs(defense, damage_type) if defense is not None else 0
+            damage = max(base_damage - armor, 0)
+
+        hp.cur = max(hp.cur - damage, 0)
 
         event = {
             "type": "attack",
             "attacker": attacker,
             "target": target,
-            "damage": 10,
+            "damage": damage,
             "damage_type": damage_type.name,
         }
+        if dodged:
+            event["dodged"] = True
         if tick is not None:
             event["tick"] = tick
         self.event_log.append(event)
+
+        if hp.cur <= 0:
+            death_event = {"type": "death", "entity": target, "killer": attacker}
+            if tick is not None:
+                death_event["tick"] = tick
+            self.event_log.append(death_event)
         return True
 
 
