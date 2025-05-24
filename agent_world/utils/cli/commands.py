@@ -14,6 +14,9 @@ from ...core.components.physics import Physics # For spawning NPCs with Physics
 from ...core.components.perception_cache import PerceptionCache # <<< ADDED
 from ...systems.interaction.pickup import Tag
 from ...systems.ai.actions import PLAYER_ID
+from ...core.components.role import RoleComponent
+from ...core.components.known_abilities import KnownAbilitiesComponent
+import yaml
 
 from ...persistence.save_load import save_world
 from ..observer import install_tick_observer, toggle_live_fps, print_fps as observer_print_fps
@@ -30,6 +33,26 @@ except ImportError:
 
 
 DEFAULT_SAVE_PATH = Path("saves/world_state.json.gz")
+ROLES_PATH = Path(__file__).resolve().parents[2] / "data" / "roles.yaml"
+_ROLE_CACHE: Dict[str, Dict[str, Any]] | None = None
+
+
+def _load_roles() -> Dict[str, Dict[str, Any]]:
+    global _ROLE_CACHE
+    if _ROLE_CACHE is not None:
+        return _ROLE_CACHE
+    if not ROLES_PATH.exists():
+        _ROLE_CACHE = {}
+        return _ROLE_CACHE
+    try:
+        data = yaml.safe_load(ROLES_PATH.read_text(encoding="utf-8")) or {}
+        if not isinstance(data, dict):
+            data = {}
+    except Exception as e:  # pragma: no cover - defensive
+        print(f"Error loading roles file: {e}")
+        data = {}
+    _ROLE_CACHE = {str(k): v for k, v in data.items() if isinstance(v, dict)}
+    return _ROLE_CACHE
 
 
 def pause(state: Dict[str, Any]) -> None:
@@ -113,6 +136,15 @@ def spawn(world: Any, kind: str, x_str: str | None = None, y_str: str | None = N
         print("World managers not initialized for spawn.")
         return None
 
+    role_name: str | None = None
+    if ":" in kind:
+        kind, role_name = kind.split(":", 1)
+    kind_lower = kind.lower()
+    if kind_lower == "npc" and x_str and not x_str.lstrip("-").isdigit():
+        role_name = x_str
+        x_str = None
+        y_str = None
+
     default_x = world.size[0] // 2 if hasattr(world, 'size') else 0
     default_y = world.size[1] // 2 if hasattr(world, 'size') else 0
     try:
@@ -133,6 +165,20 @@ def spawn(world: Any, kind: str, x_str: str | None = None, y_str: str | None = N
         cm.add_component(ent_id, AIState(personality="curious_explorer_" + str(ent_id), goals=[]))
         cm.add_component(ent_id, Physics(mass=1.0, vx=0.0, vy=0.0, friction=0.95))
         cm.add_component(ent_id, PerceptionCache(visible=[], last_tick=-1))
+        if role_name:
+            role_data = _load_roles().get(role_name)
+            if role_data:
+                role_comp = RoleComponent(
+                    role_name=role_name,
+                    can_request_abilities=bool(role_data.get("can_request_abilities", True)),
+                    uses_llm=bool(role_data.get("uses_llm", True)),
+                    fixed_abilities=list(role_data.get("fixed_abilities", [])),
+                )
+                cm.add_component(ent_id, role_comp)
+                if role_comp.fixed_abilities:
+                    cm.add_component(ent_id, KnownAbilitiesComponent(role_comp.fixed_abilities.copy()))
+            else:
+                print(f"Unknown role '{role_name}'. NPC spawned without role data.")
         print(f"Spawned NPC (ID: {ent_id}) at ({x},{y}) with AIState, Physics, and PerceptionCache")
     elif kind_lower == "item":
         cm.add_component(ent_id, Tag("item"))
