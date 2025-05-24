@@ -55,6 +55,8 @@ from agent_world.core.component_manager import ComponentManager
 from agent_world.core.components.position import Position
 from agent_world.core.spatial.spatial_index import SpatialGrid
 from agent_world.systems.movement.movement_system import MovementSystem, Velocity
+from agent_world.core.components.physics import Physics
+import pytest
 
 
 def test_velocity_dataclass():
@@ -105,3 +107,30 @@ def test_movement_blocked_by_obstacle():
     assert (pos.x, pos.y) == (0, 0)
     assert world.spatial_index.query_radius((0, 0), 0) == [e]
     clear_obstacles()
+
+
+def test_physics_dataclass():
+    p = Physics(mass=1.0, vx=2.0, vy=-1.0, friction=0.5)
+    assert (p.mass, p.vx, p.vy, p.friction) == (1.0, 2.0, -1.0, 0.5)
+
+
+def test_movement_uses_physics_when_velocity_missing():
+    world = World((5, 5))
+    world.entity_manager = EntityManager()
+    world.component_manager = ComponentManager()
+    world.spatial_index = SpatialGrid(cell_size=1)
+
+    movement = MovementSystem(world)
+    e = world.entity_manager.create_entity()
+    phys = Physics(mass=1.0, vx=1.2, vy=0.0, friction=0.5)
+    world.component_manager.add_component(e, Position(0, 0))
+    world.component_manager.add_component(e, phys)
+    world.spatial_index.insert(e, (0, 0))
+
+    movement.update()
+
+    pos = world.component_manager.get_component(e, Position)
+    assert (pos.x, pos.y) == (1, 0)
+    updated = world.component_manager.get_component(e, Physics)
+    assert updated.vx == pytest.approx(0.6)
+    assert updated.vy == 0.0
