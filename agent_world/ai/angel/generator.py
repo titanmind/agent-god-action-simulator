@@ -20,7 +20,7 @@ def _class_name(slug: str) -> str:
     return "".join(part.capitalize() for part in slug.split("_")) or "GeneratedAbility"
 
 
-def generate_ability(desc: str) -> Path:
+def generate_ability(desc: str, *, stub_code: str | None = None) -> Path:
     """Create a basic ability module under :mod:`abilities.generated`.
 
     Parameters
@@ -45,6 +45,11 @@ def generate_ability(desc: str) -> Path:
         path = GENERATED_DIR / filename
         counter += 1
 
+    body = "pass"
+    if stub_code:
+        lines = stub_code.strip().splitlines()
+        body = "\n".join("        " + ln.rstrip() for ln in lines) or "pass"
+
     template = f'''"""Generated ability scaffold.
 
 Description:
@@ -61,7 +66,7 @@ class {class_name}(Ability):
         return True
 
     def execute(self, user, world) -> None:
-        pass
+{body}
 
     @property
     def energy_cost(self) -> int:
