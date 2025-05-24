@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import re
+import textwrap
 
 
 GENERATED_DIR = Path(__file__).resolve().parents[2] / "abilities" / "generated"
@@ -20,13 +21,16 @@ def _class_name(slug: str) -> str:
     return "".join(part.capitalize() for part in slug.split("_")) or "GeneratedAbility"
 
 
-def generate_ability(desc: str) -> Path:
+def generate_ability(desc: str, *, stub_code: str | None = None) -> Path:
     """Create a basic ability module under :mod:`abilities.generated`.
 
     Parameters
     ----------
     desc:
         Short description or name used to derive the module/class.
+
+    stub_code:
+        Optional code snippet inserted into the body of ``execute``.
 
     Returns
     -------
@@ -45,6 +49,8 @@ def generate_ability(desc: str) -> Path:
         path = GENERATED_DIR / filename
         counter += 1
 
+    body = "pass" if stub_code is None else textwrap.indent(stub_code.strip(), "        ")
+
     template = f'''"""Generated ability scaffold.
 
 Description:
@@ -61,7 +67,7 @@ class {class_name}(Ability):
         return True
 
     def execute(self, user, world) -> None:
-        pass
+{body}
 
     @property
     def energy_cost(self) -> int:
