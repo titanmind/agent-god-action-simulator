@@ -16,3 +16,4 @@ class AIState:
     last_llm_action_tick: int = -1
     last_bt_direction_index: int = 0 # Index for cycling N, E, S, W
     last_bt_move_failed: bool = False # Flag if last BT move resulted in no actual movement (e.g. collision)
+    needs_immediate_rethink: bool = False
