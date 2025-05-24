@@ -4,9 +4,10 @@
 
 from __future__ import annotations
 
-from typing import Any, Optional # Added Optional
+from typing import Any, Optional
 from pathlib import Path
 import os
+from collections import OrderedDict # For LRU cache
 
 import yaml
 import pygame
@@ -33,11 +34,14 @@ def _load_window_size(config_path: Path) -> tuple[int, int]:
 
 class Window:
     """``pygame`` backed drawing surface."""
+    # Max number of distinct scaled surfaces to cache.
+    # Each entity at each distinct scaled size counts as one entry.
+    MAX_SCALED_SURFACES_CACHE_SIZE = 500 
 
     def __init__(self, size: tuple[int, int] | None = None, *, resizable: bool = True) -> None:
         if size is None:
             project_root_config = Path("config.yaml")
-            if not project_root_config.exists(): # Fallback if not in project root
+            if not project_root_config.exists():
                 project_root_config = Path(__file__).resolve().parents[2] / "config.yaml"
             size = _load_window_size(project_root_config)
 
@@ -56,14 +60,11 @@ class Window:
         except pygame.error:
              self._font = pygame.font.Font(None, 24)
 
-        # Cache for PIL Image -> Pygame Surface (unscaled)
         self._pil_to_surface_cache: dict[int, pygame.Surface] = {}
-        # Cache for (entity_id, width, height) -> Pygame Surface (scaled)
-        self._scaled_surface_cache: dict[tuple[int, int, int], pygame.Surface] = {}
+        self._scaled_surface_cache: OrderedDict[tuple[int, int, int], pygame.Surface] = OrderedDict()
 
 
     def _get_base_surface(self, entity_id: int, pil_image: Image.Image) -> pygame.Surface:
-        """Gets or creates the base (unscaled) Pygame surface from a PIL image."""
         if entity_id in self._pil_to_surface_cache:
             return self._pil_to_surface_cache[entity_id]
 
@@ -74,17 +75,18 @@ class Window:
         
         converted_surf = surf.convert_alpha() if "A" in mode else surf.convert()
         self._pil_to_surface_cache[entity_id] = converted_surf
+        # Simple cache eviction for base surfaces if needed, though less critical than scaled
+        if len(self._pil_to_surface_cache) > 200: # Example limit
+             self._pil_to_surface_cache.pop(next(iter(self._pil_to_surface_cache)))
         return converted_surf
 
     def draw_sprite(self, entity_id: int, x: int, y: int, pil_image: Image.Image) -> None:
-        """Draws a sprite at its native PIL image size."""
         surf = self._get_base_surface(entity_id, pil_image)
         self._surface.blit(surf, (x, y))
 
     def draw_sprite_scaled(self, entity_id: int, x: int, y: int, pil_image: Image.Image, target_size: tuple[int,int]) -> None:
-        """Draws a sprite, scaled to target_size."""
         scaled_width, scaled_height = target_size
-        if scaled_width <= 0 or scaled_height <= 0: return # Don't draw if not visible
+        if scaled_width <= 0 or scaled_height <= 0: return
 
         cache_key = (entity_id, scaled_width, scaled_height)
         
@@ -92,12 +94,21 @@ class Window:
 
         if scaled_surf is None:
             base_surf = self._get_base_surface(entity_id, pil_image)
-            # Perform scaling
-            scaled_surf = pygame.transform.smoothscale(base_surf, (scaled_width, scaled_height))
+            try:
+                # Using smoothscale can be slow. For pixel art, 'scale' might be better if aliasing is ok.
+                scaled_surf = pygame.transform.smoothscale(base_surf, (scaled_width, scaled_height))
+            except pygame.error as e: # Handle cases where scaling might fail (e.g. to 0x0)
+                print(f"Error scaling surface for EID {entity_id} to {target_size}: {e}")
+                # Draw base_surf unscaled as a fallback or a placeholder
+                self._surface.blit(base_surf, (x,y)) 
+                return
+
             self._scaled_surface_cache[cache_key] = scaled_surf
-            # Simple LRU for scaled cache if it grows too large
-            if len(self._scaled_surface_cache) > 500: # Arbitrary limit
-                self._scaled_surface_cache.pop(next(iter(self._scaled_surface_cache)))
+            if len(self._scaled_surface_cache) > self.MAX_SCALED_SURFACES_CACHE_SIZE:
+                self._scaled_surface_cache.popitem(last=False) # Pop oldest
+        else:
+            # Move to end to signify recent use for LRU
+            self._scaled_surface_cache.move_to_end(cache_key)
 
 
         self._surface.blit(scaled_surf, (x, y))
@@ -106,7 +117,7 @@ class Window:
     def draw_text(
         self, text: str, x: int, y: int, colour: tuple[int, int, int] = (255, 255, 255)
     ) -> None:
-        if not self._font: return # Font might not have initialized
+        if not self._font: return
         text_surf = self._font.render(text, True, colour)
         self._surface.blit(text_surf, (x, y))
 
