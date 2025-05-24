@@ -4,7 +4,24 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict, is_dataclass
-from typing import Any
+from typing import Any, List
+
+
+def _get_memories(agent_id: int, k: int) -> List[str]:
+    """Return ``k`` memory snippets for ``agent_id`` or an empty list."""
+
+    try:  # Import lazily so tests without memory module still run
+        from ..memory import retrieve
+    except Exception:  # pragma: no cover - memory module optional
+        return []
+
+    try:
+        memories = retrieve(agent_id, k)
+        if isinstance(memories, list):
+            return [str(m) for m in memories]
+    except Exception:  # pragma: no cover - retrieval failure
+        pass
+    return []
 
 
 def _normalize(obj: Any) -> Any:
@@ -19,21 +36,29 @@ def _normalize(obj: Any) -> Any:
     return obj
 
 
-def build_prompt(agent_id: int, world_view: Any) -> str:
+def build_prompt(agent_id: int, world_view: Any, *, memory_k: int = 5) -> str:
     """Return a deterministic prompt string for ``agent_id``.
 
     ``world_view`` should be composed of JSON-serialisable types or dataclasses
-    thereof. The output is deterministic for identical inputs to support
-    replaying LLM interactions.
+    thereof. ``memory_k`` controls how many past memory snippets to include. The
+    output is deterministic for identical inputs to support replaying LLM
+    interactions.
     """
 
     normalized = _normalize(world_view)
     serialized = json.dumps(normalized, sort_keys=True, indent=2)
+
+    memories = _get_memories(agent_id, memory_k)
+    mem_section = ""
+    if memories:
+        mem_json = json.dumps(memories, sort_keys=True, indent=2)
+        mem_section = f"\nMemory:\n{mem_json}"
+
     header = (
         f"Agent {agent_id}, based on the following world view decide your next "
         "action."
     )
-    prompt = f"{header}\nWorld View:\n{serialized}\nRespond with a single action"
+    prompt = f"{header}\nWorld View:\n{serialized}{mem_section}\nRespond with a single action"
     return prompt
 
 
