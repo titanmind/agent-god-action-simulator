@@ -5,8 +5,10 @@ from __future__ import annotations
 import asyncio
 import os
 import socket
+import threading
+import uuid
 from pathlib import Path
-from typing import Tuple
+from typing import Any, Tuple
 
 import yaml
 
@@ -42,9 +44,11 @@ class LLMManager:
                     self.offline = True
 
         self.cache = LLMCache(capacity=cache_size)
-        self.queue: asyncio.Queue[Tuple[str, asyncio.Future[str]]] = asyncio.Queue(
-            maxsize=queue_max
+        self.queue: asyncio.Queue[Tuple[str, asyncio.Future[str], str]] = (
+            asyncio.Queue(maxsize=queue_max)
         )
+        self.loop: asyncio.AbstractEventLoop | None = None
+        self._processing_thread: threading.Thread | None = None
 
         if not self.offline:
             print(f"LLM online: {self.model}")
@@ -52,8 +56,10 @@ class LLMManager:
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
-    def request(self, prompt: str, timeout: float | None = None) -> str:
-        """Return response or ``"<wait>"`` depending on current mode."""
+    def request(
+        self, prompt: str, world: Any | None = None, timeout: float | None = None
+    ) -> str:
+        """Return response prompt_id or result depending on mode."""
 
         if self.mode == "offline":
             return "<wait>"
@@ -67,31 +73,61 @@ class LLMManager:
         if cached is not None:
             return cached
 
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:  # pragma: no cover - no running loop
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-        fut: asyncio.Future[str] = loop.create_future()
-        try:
-            self.queue.put_nowait((prompt, fut))
-        except asyncio.QueueFull:
-            # Drop the request if the queue is saturated
+        if world is None or self.loop is None:
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:  # pragma: no cover - no running loop
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+            fut: asyncio.Future[str] = loop.create_future()
+            try:
+                self.queue.put_nowait((prompt, fut, uuid.uuid4().hex))
+            except asyncio.QueueFull:
+                return "<wait>"
             return "<wait>"
-        return "<wait>"
 
-    async def process_queue_once(self) -> None:
+        fut: asyncio.Future[str] = self.loop.create_future()
+        prompt_id = uuid.uuid4().hex
+        world.async_llm_responses[prompt_id] = fut
+        try:
+            self.queue.put_nowait((prompt, fut, prompt_id))
+        except asyncio.QueueFull:
+            world.async_llm_responses.pop(prompt_id, None)
+            return "<wait>"
+        return prompt_id
+
+    async def process_queue_item(self) -> None:
         """Handle a single queued prompt and populate the cache."""
 
-        if self.queue.empty():
-            return
-
-        prompt, fut = await self.queue.get()
-        result = "<wait>"  # Stubbed response
+        prompt, fut, prompt_id = await self.queue.get()
+        await asyncio.sleep(0.1)
+        result = f"action_for_{prompt_id}"
         self.cache.put(prompt, result)
         if not fut.done():
             fut.set_result(result)
         self.queue.task_done()
+
+    async def process_queue_once(self) -> None:
+        if self.queue.empty():
+            return
+        await self.process_queue_item()
+
+    def start_processing_loop(self, world_ref: Any) -> None:
+        """Run queue processing in a background thread."""
+
+        def _run() -> None:
+            self.loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(self.loop)
+
+            async def _loop() -> None:
+                while True:
+                    await self.process_queue_item()
+
+            self.loop.run_until_complete(_loop())
+
+        self._processing_thread = threading.Thread(target=_run, daemon=True)
+        world_ref.llm_processing_thread = self._processing_thread
+        self._processing_thread.start()
 
     # ------------------------------------------------------------------
     # Helpers
