@@ -358,10 +358,14 @@ def main() -> None:
                 elif world.raw_actions_with_actor and world.action_queue is None:
                     print(f"[Tick {tm.tick_counter}] MainLoop: CRITICAL - world.action_queue is None.")
 
-                if world.systems_manager:
-                    world.systems_manager.update(world, tm.tick_counter) # Pass world and tick
+                if not world.paused_for_angel:
+                    if world.systems_manager:
+                        world.systems_manager.update(world, tm.tick_counter) # Pass world and tick
 
-                tm.sleep_until_next_tick() 
+                    tm.sleep_until_next_tick()
+                else:
+                    time.sleep(0.016)
+
                 step_once = False
             else: 
                 if world.gui_enabled and actual_renderer.window and hasattr(actual_renderer.window, '_surface'):
