@@ -220,11 +220,30 @@ def debug(world: Any, entity_id_str: str | None) -> None:
 def fps(world: Any, state: Dict[str, Any]) -> None:
     tm = getattr(world, "time_manager", None)
     if tm is not None: install_tick_observer(tm)
-    fps_is_now_enabled = toggle_live_fps()
-    state["fps_enabled"] = fps_is_now_enabled
-    world.fps_enabled = fps_is_now_enabled
-    if fps_is_now_enabled: print("Live FPS display enabled."); observer_print_fps()
-    else: print("Live FPS display disabled.")
+        fps_is_now_enabled = toggle_live_fps()
+        state["fps_enabled"] = fps_is_now_enabled
+        world.fps_enabled = fps_is_now_enabled
+        if fps_is_now_enabled: print("Live FPS display enabled."); observer_print_fps()
+        else: print("Live FPS display disabled.")
+
+
+def _install_follow_hook(world: Any, renderer_instance: Renderer, state: Dict[str, Any]) -> None:
+    tm = getattr(world, "time_manager", None)
+    if tm is None or renderer_instance is None:
+        print("TimeManager or renderer not found. Cannot follow entity.")
+        return
+    if getattr(tm, "_follow_hook_installed", False):
+        return
+    original_sleep = tm.sleep_until_next_tick
+
+    def follow_sleep_wrapper() -> None:
+        ent_id = state.get("follow_entity_id")
+        if ent_id is not None:
+            renderer_instance.center_on_entity(ent_id)
+        original_sleep()
+
+    tm.sleep_until_next_tick = follow_sleep_wrapper
+    tm._follow_hook_installed = True
 
 
 def _install_gui_hook(world: Any, renderer_instance: Renderer) -> None:
@@ -279,6 +298,24 @@ def gui(world: Any, state: Dict[str, Any]) -> None:
         print("GUI disabled.")
 
 
+def follow(world: Any, entity_id_str: str | None, state: Dict[str, Any]) -> None:
+    renderer_instance = state.get("renderer")
+    if renderer_instance is None:
+        print("Error: Renderer not found in state. Cannot follow entity.")
+        return
+    if entity_id_str is None:
+        print("Usage: /follow <entity_id>")
+        return
+    try:
+        entity_id = int(entity_id_str)
+    except ValueError:
+        print(f"Invalid entity id: {entity_id_str}")
+        return
+    state["follow_entity_id"] = entity_id
+    _install_follow_hook(world, renderer_instance, state)
+    print(f"Following entity {entity_id}")
+
+
 def help_command(state: Dict[str, Any]) -> None:
     print("\nAvailable commands:")
     print("  /help                - Show this help message.")
@@ -290,6 +327,7 @@ def help_command(state: Dict[str, Any]) -> None:
     print("  /reload abilities    - Hot-reload abilities.")
     print("  /spawn <kind> [x] [y]- Spawn entity (npc, item). E.g., /spawn npc 5 5 or /spawn item")
     print("  /debug <entity_id>   - Print component data for an entity.")
+    print("  /follow <entity_id>  - Center camera on an entity each tick.")
     print("  /quit                - Exit the application.\n")
 
 
@@ -334,6 +372,9 @@ def execute(command: str, args: list[str], world: Any, state: Dict[str, Any]) ->
     elif cmd_lower == "fps":
         fps(world, state)
         # return_value remains None
+    elif cmd_lower == "follow" and args:
+        follow(world, args[0], state)
+        # return_value remains None
     elif cmd_lower == "quit":
         state["running"] = False
         print("Quit command received. Shutting down...")
@@ -346,5 +387,5 @@ def execute(command: str, args: list[str], world: Any, state: Dict[str, Any]) ->
 
 __all__ = [
     "pause", "step", "save", "reload_abilities", "profile", "spawn", "debug",
-    "gui", "fps", "help_command", "execute",
+    "gui", "fps", "follow", "help_command", "execute",
 ]

@@ -41,6 +41,7 @@ class Renderer:
         except Exception:
              self.tile_font = pygame.font.Font(None, 12)
         self._update_tile_font_size() # Call it once on init
+        self._last_world: Any | None = None
 
     def _update_tile_font_size(self):
         try:
@@ -75,9 +76,17 @@ class Renderer:
 
 
     def center_on_entity(self, entity_id: int) -> None:
-        """Center the camera on the given entity (stub)."""
-        # Stub implementation – real centering logic added later
-        pass
+        """Center the camera on the given entity using the last known world."""
+        world = getattr(self, "_last_world", None)
+        if world is None:
+            return
+        cm = getattr(world, "component_manager", None)
+        if cm is None:
+            return
+        pos = cm.get_component(entity_id, Position)
+        if pos is None:
+            return
+        self.set_camera_center(float(pos.x), float(pos.y))
 
 
     def world_to_screen(self, world_x: float, world_y: float) -> tuple[int, int]:
@@ -153,6 +162,7 @@ class Renderer:
     def update(self, world: Any) -> None:
         tm = getattr(world, "time_manager", None)
         current_tick = tm.tick_counter if tm else "N/A"
+        self._last_world = world
 
         if self.window is None or not hasattr(self.window, '_surface'):
             return
