@@ -16,7 +16,7 @@ class PerceptionSystem:
     def __init__(self, world: Any, event_queue: List[AbilityUseEvent] | None = None) -> None:
         self.world = world
         self.event_queue: List[AbilityUseEvent] = event_queue if event_queue is not None else getattr(
-            ability_mod, "GLOBAL_ABILITY_EVENTS", []
+            ability_mod, "GLOBAL_ABILITY_EVENT_QUEUE", []
         )
         self._last_index = 0
 
