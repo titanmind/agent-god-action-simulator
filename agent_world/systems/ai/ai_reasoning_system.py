@@ -10,6 +10,7 @@ COOLDOWN_TICKS = 10 # How many ticks an agent waits after an LLM action before r
 from ...core.components.ai_state import AIState
 from ...ai.llm.prompt_builder import build_prompt
 from ...ai.llm.llm_manager import LLMManager
+from ...core.components.role import RoleComponent
 from .behavior_tree import BehaviorTree, build_fallback_tree
 
 # Define strings that are considered non-actions or failures from the LLM
@@ -75,6 +76,14 @@ class AIReasoningSystem:
             if ai_comp is None:
                 continue
 
+            role_comp = cm.get_component(entity_id, RoleComponent)
+            if role_comp and not role_comp.uses_llm:
+                if self.behavior_tree:
+                    action = self.behavior_tree.run(entity_id, self.world)
+                    if action:
+                        self.action_tuples_list.append((entity_id, action))
+                continue
+
             bypass_cooldown = False
             if ai_comp.needs_immediate_rethink:
                 ai_comp.needs_immediate_rethink = False
@@ -96,6 +105,11 @@ class AIReasoningSystem:
                 if self.llm.mode == "live":
                     llm_attempt_made_or_resolved = True
                     prompt = build_prompt(entity_id, self.world)
+                    if role_comp and not role_comp.can_request_abilities:
+                        prompt = "\n".join(
+                            line for line in prompt.splitlines()
+                            if "GENERATE_ABILITY" not in line
+                        )
                     returned_value = self.llm.request(prompt, self.world)
 
                     if returned_value in NON_ACTION_STRINGS:
@@ -112,7 +126,12 @@ class AIReasoningSystem:
                 
                 elif self.llm.mode == "echo": # Handle echo mode separately if not covered by "live"
                     llm_attempt_made_or_resolved = True
-                    prompt = build_prompt(entity_id, self.world) 
+                    prompt = build_prompt(entity_id, self.world)
+                    if role_comp and not role_comp.can_request_abilities:
+                        prompt = "\n".join(
+                            line for line in prompt.splitlines()
+                            if "GENERATE_ABILITY" not in line
+                        )
                     returned_action = self.llm.request(prompt, self.world) # LLMManager handles echo logic
                     print(f"[Tick {tm.tick_counter}][AI Agent {entity_id}] LLM Echo mode response: '{returned_action}' for prompt: {prompt[:70]}...")
                     if returned_action not in NON_ACTION_STRINGS:
