@@ -109,9 +109,11 @@ def bootstrap(config_path: str | Path = Path("config.yaml")) -> World:
     crafting = CraftingSystem(world, event_log=crafting_event_log)
     ability = AbilitySystem(world)
     llm_cfg = cfg.get("llm", {})
-    llm_api_key = os.getenv("OPENROUTER_API_KEY") or llm_cfg.get("api_key") 
+    llm_api_key = os.getenv("OPENROUTER_API_KEY") or llm_cfg.get("api_key")
     llm_model = os.getenv("OPENROUTER_MODEL") or llm_cfg.get("model")
     llm = LLMManager(api_key=llm_api_key, model=llm_model)
+    world.llm_manager_instance = llm
+    world.llm_manager_instance.start_processing_loop(world)
     ai_reasoning = AIReasoningSystem(world, llm, world.raw_actions_with_actor)
     
     sm.register(physics)

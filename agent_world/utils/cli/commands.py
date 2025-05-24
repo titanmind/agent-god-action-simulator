@@ -9,6 +9,7 @@ from typing import Any, Dict, Iterable, TYPE_CHECKING
 from ...core.components.position import Position # For PLAYER_ID check in spawn
 from ...core.components.health import Health
 from ...core.components.inventory import Inventory
+from ...core.components.ai_state import AIState
 from ...systems.interaction.pickup import Tag 
 from ...systems.ai.actions import PLAYER_ID # Import PLAYER_ID
 
@@ -122,6 +123,7 @@ def spawn(world: Any, kind: str, x_str: str | None = None, y_str: str | None = N
     if kind_lower == "npc":
         cm.add_component(ent_id, Health(cur=10, max=10))
         cm.add_component(ent_id, Inventory(capacity=4))
+        cm.add_component(ent_id, AIState(personality="curious explorer"))
         print(f"Spawned NPC (ID: {ent_id}) at ({x},{y})")
     elif kind_lower == "item":
         cm.add_component(ent_id, Tag("item")) 
