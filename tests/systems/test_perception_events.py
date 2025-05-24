@@ -29,7 +29,7 @@ def test_events_visible_agents_receive(monkeypatch):
     world.component_manager.add_component(other, EventLog())
 
     events: list[AbilityUseEvent] = []
-    monkeypatch.setattr(ability_mod, "GLOBAL_ABILITY_EVENTS", events, False)
+    monkeypatch.setattr(ability_mod, "GLOBAL_ABILITY_EVENT_QUEUE", events, False)
 
     system = PerceptionSystem(world)
 
