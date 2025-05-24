@@ -927,22 +927,6 @@ Outline:
 
 ---
 
-## Phase 21 · Docs, Coverage & Release Prep
-
-### Wave 21-A (**parallel**)
-
-```
-
-Task 21-A-1  (@dev-charlie) – Update README, AGENTS.md, docs/\*
-Task 21-A-2  (@dev-dana)   – Push unit-test coverage ≥ 95 %
-Task 21-A-3  (@dev-zoe)    – End-to-end smoke test:
-• spin up world, run ≥ 5 ticks, assert ≥ 1 entity moved
-and GUI `/gui` toggle works without error.
-
-```
-
----
-
 ### ✅ Completion Criteria
 * Main loop ≥ 10 Hz with ≥ 5 k entities.  
 * Forces + collision events logged and surfaced to AI.  
