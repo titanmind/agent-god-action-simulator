@@ -740,136 +740,159 @@ Outline:
 ---
 
 ## Phase 18 · LLM Determinism & Test Harness
-*Objective: make AI predictable in CI, enable rapid offline iteration.*
+*Objective: predictable AI in CI and fast offline iteration.*
 
-### Wave 18-A
+### Wave 18-S (​stub – merge **first**)  
+Sets the public contract other tasks depend on.
+
+```
+
+Task 18-S-1
+Developer **@dev-elliot**
+Files:
+└─ agent\_world/ai/llm/llm\_manager.py
+└─ agent\_world/config.yaml
+Outline:
+• Add `llm.mode: ["offline", "echo", "live"]` (default **offline**) to YAML.
+• `OFFLINE` ⇒ `"<wait>"`; `ECHO` ⇒ return last non-empty line; `LIVE` ⇒ current logic.
+• `AW_LLM_MODE` env-var overrides YAML.
+• Provide `LLMManager.current_mode()` helper used by tests.
+
+```
+
+### Wave 18-A (run **in parallel** after 18-S)
 
 ```
 
 Task 18-A-1
-Developer **@dev-elliot**
-Files allowed:
-└─ agent\_world/ai/llm/llm\_manager.py
-└─ agent\_world/config.yaml
+Developer **@dev-fay**
+Files:
+└─ tests/conftest.py            (new)
+└─ tests/test\_ai\_determinism.py (new)
 Outline:
-• Add `llm.mode = ["offline", "echo", "live"]` in YAML.
-• **offline** (default) → `<wait>`.
-• **echo** → returns the last non-empty line of the prompt.
-• **live**  → current behaviour (will still short-circuit in CI).
-• Environment variable `AW_LLM_MODE` overrides YAML.
+• Pytest fixture `mock_llm(mapping)` that monkey-patches
+`LLMManager.request()` with table `{agent_id: reply}`.
+• Integration test: two agents with scripted replies `{1:"MOVE N", 2:"ATTACK 1"}`,
+run one tick, assert world state updated.
 
 Task 18-A-2
-Developer **@dev-fay**
-Files allowed:
-└─ tests/conftest.py                (new)
-└─ tests/test\_ai\_deterministic.py   (new)
-Outline:
-• Provide pytest fixture `mock_llm(monkeypatch, mapping)` that replaces
-`LLMManager.request()` with a table lookup `{agent_id: reply}`.
-• Write integration test: create two agents, script replies
-`{1:"MOVE N", 2:"ATTACK 1"}`, run one tick → assert state changes.
-
-Task 18-A-3
 Developer **@dev-glen**
-Files allowed:
+Files:
 └─ agent\_world/ai/angel/generator.py
-└─ tests/test\_angel\_generator.py    (new)
+└─ tests/test\_angel\_generator.py (new)
 Outline:
-• Modify generator to accept optional `stub_code` param (string) for tests.
-• Unit test creates a scaffold with a custom execute() body, hot-reloads via
-`AbilitySystem`, asserts behaviour matches scripted outcome.
+• `generate_ability(desc, *, stub_code:str|None=None)` parameter; when supplied,
+insert `stub_code` into `execute()`.
+• Unit test writes a scaffold, hot-reloads via `AbilitySystem`, asserts
+custom body executed.
 
 ```
 
 ---
 
 ## Phase 19 · Config & Memory Hygiene
-*Objective: lift hard-coded numbers to YAML and keep runtime caches bounded.*
+*Objective: move magic numbers to YAML and cap in-memory growth.*
 
-### Wave 19-A
+### Wave 19-A (**fully parallel**)
 
 ```
 
 Task 19-A-1
 Developer **@dev-hana**
-Files allowed:
+Files:
 └─ config.yaml
 └─ agent\_world/utils/asset\_generation/sprite\_gen.py
 Outline:
-• Add section:
+• Add section
 
 ```
 cache:
-  sprite_max: 10000        # max images in RAM
-  log_retention_mb: 50     # rotate event logs
+  sprite_max: 10000      # max images in RAM
+  log_retention_mb: 50   # event-log rotation
 world:
   max_entities: 8000
 ```
 
-• Implement simple LRU eviction for `_SPRITE_CACHE`.
+• Implement LRU eviction for `_SPRITE_CACHE`.
 
 Task 19-A-2
 Developer **@dev-ian**
-Files allowed:
+Files:
 └─ agent\_world/persistence/event\_log.py
 Outline:
-• When file grows beyond `cache.log_retention_mb`, rotate
-`events_YYYYMMDD_HHMM.jsonl` (gzip after rotation).
+• When current log exceeds `cache.log_retention_mb`, rotate to
+`events_YYYYMMDD_HHMM.jsonl` and gzip the old file.
 
 ```
 
 ---
 
-## Phase 20 · GUI Rendering + Input
+## Phase 20 · GUI Rendering + Input  
+*Replace ASCII `/view` with hardware-accelerated window.*
 
-> Goal: replace the ASCII `/view` with an actual real-time window that
-> displays procedurally-generated sprites, UI overlays and supports pan / zoom / click.
+### Wave 20-S (​stub – merge **first**)  
 
-### Tech choice
+```
 
-* **pygame** (SDL-based, pip-installable, cross-platform, hardware-accelerated, light).  
-* Pillow already supplies the sprites → convert `PIL.Image` → `pygame.Surface`.
+Task 20-S-1
+Developer **@dev-alice**
+Files:
+└─ agent\_world/gui/window\.py   (new)
+└─ agent\_world/gui/renderer.py (new)
+└─ agent\_world/main.py         (# GUI HOOK only)
+Outline:
+• Define minimal interfaces:
 
-### Wave 20-A (3 parallel tasks)
+```python
+class Window:
+    def draw_sprite(self, entity_id:int, x:int, y:int, pil_image): ...
+    def draw_text(self, text:str, x:int, y:int, colour=(255,255,255)): ...
+    def refresh(self): ...
+class Renderer:
+    def update(self, world): ...
+```
+
+• Add no-op implementations so downstream tasks can import & compile.
+• Inject `renderer.update()` stub into main loop when
+`state["gui_enabled"]` is true (toggle will arrive later).
+
+```
+
+### Wave 20-A (**parallel** after 20-S)
 
 ```
 
 Task 20-A-1
-Developer @dev-alice
-Files allowed:
-└─ agent\_world/gui/window\.py   (new)
-└─ pyproject.toml  (add `"pygame"` to dependencies)
+Developer **@dev-alice**
+Files:
+└─ agent\_world/gui/window\.py
+└─ pyproject.toml  (add `pygame`)
 Outline:
-• Initialise `pygame` and open a resizable 800 × 600 window titled **Agent World**
-(use `config.yaml::window.size` if present).
-• Maintain `Window.screen` (main Surface) and a sprite cache that stores
-`entity_id → pygame.Surface`.
-• `Window.draw_sprite(entity_id, x, y, pil_image)` → blit cached Surface.
-• `Window.draw_text(text, x, y, colour=(255,255,255))` via `pygame.font`.
-• `Window.refresh()` flips the display and pumps `pygame.event.pump()`.
+• Replace stub with real `pygame` window (config-driven size, resizable).
+• Maintain `self._sprite_cache: dict[int, pygame.Surface]`.
+• Convert `PIL.Image` → `pygame.Surface` on first use.
+• Implement `draw_sprite`, `draw_text`, `refresh`.
 
 Task 20-A-2
-Developer @dev-bob
-Files allowed:
-└─ agent\_world/gui/renderer.py   (new)
-└─ agent\_world/utils/observer.py (add FPS overlay hook)
+Developer **@dev-bob**
+Files:
+└─ agent\_world/gui/renderer.py
+└─ agent\_world/utils/observer.py
 Outline:
-• Iterate entities with `Position`; fetch sprite via `sprite_gen.get_sprite()`
-then call `window.draw_sprite()`.
-• Draw optional FPS overlay (average from `observer._tick_durations`).
-• Implement camera panning with arrow keys and scroll-wheel zoom (read from
-`pygame.event.get()`).
-• `Renderer.update(world)` is called once per tick **after** all systems run.
+• Iterate entities with `Position`; blit via `window.draw_sprite`.
+• FPS overlay (average from `_tick_durations`).
+• Camera centre, arrow-key pan, scroll-wheel zoom
+(handle in `pygame.event.get()`).
 
 Task 20-A-3
-Developer @dev-charlie
-Files allowed:
+Developer **@dev-charlie**
+Files:
 └─ agent\_world/utils/cli/command\_parser.py
 └─ agent\_world/utils/cli/commands.py
 Outline:
-• Add `/gui` command to toggle GUI at runtime (`state["gui_enabled"]`).
-• When enabled, inject `renderer.update()` into the main loop by wrapping
-`TimeManager.sleep_until_next_tick` (similar to TerminalView hook).
+• Add `/gui` command toggling `state["gui_enabled"]`.
+• When enabled, wrap `TimeManager.sleep_until_next_tick`
+to call `renderer.update(world)` then `window.refresh()`.
 
 ```
 
@@ -878,27 +901,27 @@ Outline:
 ```
 
 Task 20-B-1
-Developer @dev-dana
-Files allowed:
+Developer **@dev-dana**
+Files:
 └─ agent\_world/gui/input.py   (new)
 └─ agent\_world/systems/ai/actions.py
 Outline:
-• Translate left-click on an entity into `MOVE` or `ATTACK` debug actions for
-the special “player controller” entity (ID 0).
-• Hotkeys (via `pygame.KEYDOWN`):
+• Map left-click on an entity → enqueue `MOVE` or `ATTACK` for
+“player controller” (entity 0).
+• Hot-keys:
 Space – pause/unpause
-F     – toggle live FPS overlay
+F     – toggle live FPS
 R     – reload abilities
-• Enqueue actions through the existing `ActionQueue` to keep determinism.
+• Use existing `ActionQueue` to maintain determinism.
 
 Task 20-B-2
-Developer @dev-elliot
-Files allowed:
+Developer **@dev-elliot**
+Files:
 └─ agent\_world/utils/asset\_generation/sprite\_gen.py
 Outline:
-• Add optional `outline_colour` parameter to `generate_sprite()`; when the GUI
-highlights a hovered/selected entity it requests the outlined version.
-• Cache outlined variants separately to avoid recreation churn.
+• Support `outline_colour` arg in `generate_sprite()`.
+• GUI passes highlight colour for hovered/selected entities.
+• Cache outlined variants separately.
 
 ```
 
@@ -906,25 +929,24 @@ highlights a hovered/selected entity it requests the outlined version.
 
 ## Phase 21 · Docs, Coverage & Release Prep
 
-### Wave 21-A
+### Wave 21-A (**parallel**)
 
 ```
 
-Task 21-A-1  (@dev-charlie) – README, AGENTS.md, docs/\*
-Task 21-A-2  (@dev-dana)   – bring test coverage ≥ 95 %
-Task 21-A-3  (@dev-zoe)    – end-to-end smoke-test:
-• spin up world, run 5 ticks, assert at least one entity moved.
+Task 21-A-1  (@dev-charlie) – Update README, AGENTS.md, docs/\*
+Task 21-A-2  (@dev-dana)   – Push unit-test coverage ≥ 95 %
+Task 21-A-3  (@dev-zoe)    – End-to-end smoke test:
+• spin up world, run ≥ 5 ticks, assert ≥ 1 entity moved
+and GUI `/gui` toggle works without error.
 
 ```
 
 ---
 
-### ✅ **Completion Criteria**
-* Main loop runs at ≥ 10 Hz with ≥ 5 k entities and full physics/LLM wiring.  
-* Force / collision events logged and visible to AI & observer.  
-* Deterministic CI via mock-LLM; “echo” mode useful for demos.  
-* `python main.py` with `/gui` shows sprites moving; CLI & GUI inputs control
-  the simulation; abilities hot-reload live.  
-* Persisted snapshots + incremental replays load without divergence.  
-* Unit-test coverage ≥ 95 %; docs & changelog up-to-date.
-```
+### ✅ Completion Criteria
+* Main loop ≥ 10 Hz with ≥ 5 k entities.  
+* Forces + collision events logged and surfaced to AI.  
+* Deterministic CI via mock-LLM; “echo” mode for local demos.  
+* `/gui` shows moving sprites; GUI & CLI inputs affect the simulation; abilities hot-reload live.  
+* Snapshots + incremental replays load without divergence.  
+* Test coverage ≥ 95 %; docs & changelog up-to-date.
