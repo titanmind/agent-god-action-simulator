@@ -12,6 +12,11 @@ from ...systems.interaction.pickup import Tag
 
 from ...persistence.save_load import save_world
 from ..observer import install_tick_observer, toggle_live_fps
+from ...gui.renderer import Renderer
+
+# GUI rendering globals
+_renderer = Renderer()
+_gui_enabled: bool = False
 
 try:  # utils.profiling may not implement profile_ticks yet
     from ..profiling import profile_ticks
@@ -109,6 +114,35 @@ def fps(world: Any, state: Dict[str, Any]) -> None:
     state["fps"] = toggle_live_fps()
 
 
+def _install_gui_hook(world: Any) -> None:
+    tm = getattr(world, "time_manager", None)
+    if tm is None or hasattr(tm, "_gui_wrapped"):
+        return
+
+    original = tm.sleep_until_next_tick
+
+    def wrapper() -> None:
+        if _gui_enabled:
+            _renderer.update(world)
+            _renderer.window.refresh()
+        original()
+
+    tm.sleep_until_next_tick = wrapper  # type: ignore[assignment]
+    setattr(tm, "_gui_wrapped", True)
+
+
+def gui(world: Any, state: Dict[str, Any]) -> None:
+    """Toggle GUI rendering on or off."""
+
+    global _gui_enabled
+    _gui_enabled = not _gui_enabled
+    state["gui_enabled"] = _gui_enabled
+    _install_gui_hook(world)
+    if _gui_enabled:
+        _renderer.update(world)
+        _renderer.window.refresh()
+
+
 
 def execute(command: str, args: list[str], world: Any, state: Dict[str, Any]) -> None:
     """Dispatch ``command`` with ``args``."""
@@ -132,6 +166,8 @@ def execute(command: str, args: list[str], world: Any, state: Dict[str, Any]) ->
             print(f"Invalid entity id: {args[0]}")
         else:
             debug(world, ent)
+    elif command == "gui":
+        gui(world, state)
     elif command == "fps":
         fps(world, state)
 
@@ -144,6 +180,7 @@ __all__ = [
     "profile",
     "spawn",
     "debug",
+    "gui",
     "fps",
     "execute",
 ]
