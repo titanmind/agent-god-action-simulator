@@ -9,6 +9,7 @@ import re
 from . import generator as angel_generator
 from .vault_index import get_vault_index
 from ...core.components.known_abilities import KnownAbilitiesComponent
+from ...core.components.ai_state import AIState
 
 
 class AngelSystem:
@@ -36,6 +37,9 @@ class AngelSystem:
             cm.add_component(agent_id, comp)
         if class_name not in comp.known_class_names:
             comp.known_class_names.append(class_name)
+            ai_state = cm.get_component(agent_id, AIState)
+            if ai_state is not None:
+                ai_state.needs_immediate_rethink = True
 
     def generate_and_grant(self, agent_id: int, description: str) -> dict:
         """Generate an ability or fetch one from the vault."""
