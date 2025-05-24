@@ -47,6 +47,15 @@ def print_fps() -> None:
     print(msg)
 
 
+def average_fps() -> float:
+    """Return the average FPS based on ``_tick_durations``."""
+
+    if not _tick_durations:
+        return 0.0
+    avg = sum(_tick_durations) / len(_tick_durations)
+    return 1.0 / avg if avg > 0 else float("inf")
+
+
 def toggle_live_fps() -> bool:
     """Toggle live FPS printing. Returns ``True`` if enabled after toggle."""
 
@@ -127,6 +136,7 @@ __all__ = [
     "warn_missing_managers",
     "log_event",
     "dump_state",
+    "average_fps",
     "_tick_durations",
     "_events",
 ]
