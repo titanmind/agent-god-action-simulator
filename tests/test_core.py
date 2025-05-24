@@ -19,3 +19,17 @@ def test_world_stub_methods():
     w.remove_entity(1)
     w.register_system(object())
     w.unregister_system(object())
+
+
+def test_spawn_resource_populates_tile() -> None:
+    w = World((5, 5))
+    w.spawn_resource("ore", 2, 3)
+    assert w.tile_map[3][2]["kind"] == "ore"
+
+
+def test_generate_resources_deterministic() -> None:
+    w1 = World((4, 4))
+    w1.generate_resources(seed=123)
+    w2 = World((4, 4))
+    w2.generate_resources(seed=123)
+    assert w1.tile_map == w2.tile_map
