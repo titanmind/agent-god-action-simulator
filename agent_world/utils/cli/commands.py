@@ -219,7 +219,8 @@ def debug(world: Any, entity_id_str: str | None) -> None:
 
 def fps(world: Any, state: Dict[str, Any]) -> None:
     tm = getattr(world, "time_manager", None)
-    if tm is not None: install_tick_observer(tm)
+    if tm is not None: 
+        install_tick_observer(tm)
         fps_is_now_enabled = toggle_live_fps()
         state["fps_enabled"] = fps_is_now_enabled
         world.fps_enabled = fps_is_now_enabled
