@@ -1,0 +1,16 @@
+creature:
+  can_request_abilities: false
+  uses_llm: false
+  fixed_abilities:
+    - MeleeStrike
+merchant:
+  can_request_abilities: false
+  uses_llm: true
+  fixed_abilities: []
+
+guard:
+  can_request_abilities: true
+  uses_llm: false
+  fixed_abilities:
+    - MeleeStrike
+    - ArrowShot
