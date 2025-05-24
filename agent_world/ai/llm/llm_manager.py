@@ -193,9 +193,15 @@ class LLMManager:
                 print(f"[LLMManager ERROR] Request Error for prompt_id {prompt_id}: {e}")
                 result = "<error_llm_request>"
             except Exception as e: # Catch-all for other errors like JSONDecodeError, KeyErrors during parsing
-                print(f"[LLMManager ERROR] Unexpected error processing LLM response for prompt_id {prompt_id}: {e}")
-                print(f"   Raw response (if available): {raw_response_text[:500]}")
-                result = "<error_llm_parsing>"
+                error_type_name = type(e).__name__
+                print(f"[LLMManager ERROR] Unexpected error ({error_type_name}) processing LLM response for prompt_id {prompt_id}: {e}")
+                # VVV MODIFICATION HERE VVV
+                if raw_response_text is not None: # Check if raw_response_text was populated
+                    print(f"   Raw response (if available): {raw_response_text[:500]}")
+                else:
+                    print(f"   Raw response was not available (error likely occurred before or during API call).")
+                # ^^^ MODIFICATION HERE ^^^
+                result = "<error_llm_parsing>" # Or a more specific error based on e
 
         print(f"[LLMManager DEBUG] Result for prompt_id {prompt_id}: '{result}'")
         self.cache.put(prompt, result)

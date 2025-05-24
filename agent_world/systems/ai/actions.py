@@ -1,11 +1,11 @@
-
+# agent_world/systems/ai/actions.py
 """Utilities for parsing LLM-issued action strings."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from collections import deque
-from typing import Deque, Optional, Union, List # Added List
+from typing import Deque, Optional, Union, List 
 
 # ID used by the GUI input handler for the local player controller
 PLAYER_ID = 0
@@ -38,7 +38,30 @@ class IdleAction:
     """No-op action used for a single tick."""
     actor: int
 
-Action = Union[MoveAction, AttackAction, LogAction, IdleAction]
+@dataclass(slots=True)
+class GenerateAbilityAction:
+    """Request generation of a new ability."""
+    actor: int
+    description: str
+
+@dataclass(slots=True)
+class UseAbilityAction:
+    """Use an existing ability."""
+    actor: int
+    ability_name: str
+    target_id: Optional[int] = None
+
+@dataclass(slots=True)
+class PickupAction: 
+    """Attempt to pick up an item."""
+    actor: int
+    item_id: int
+
+
+Action = Union[
+    MoveAction, AttackAction, LogAction, IdleAction, 
+    GenerateAbilityAction, UseAbilityAction, PickupAction
+]
 
 _DIRECTION_MAP: dict[str, tuple[int, int]] = {
     "N": (0, -1), "S": (0, 1), "E": (1, 0), "W": (-1, 0),
@@ -46,78 +69,88 @@ _DIRECTION_MAP: dict[str, tuple[int, int]] = {
 
 def _parse_single_action_segment(actor: int, command_segment: str) -> Optional[Action]:
     """Parses a single command segment like "MOVE N" or "LOG message" """
-    parts = command_segment.strip().split(maxsplit=1)
+    parts = command_segment.strip().split(maxsplit=1) 
     if not parts: return None
     cmd = parts[0].upper()
-    arg = parts[1] if len(parts) > 1 else ""
+    arg_str = parts[1].strip() if len(parts) > 1 else ""
+    # <<< DEBUG PRINT ADDED >>>
+    print(f"[DEBUG _parse_single_action_segment] actor: {actor}, cmd: '{cmd}', arg_str: '{arg_str}'")
 
-    if cmd == "MOVE" and arg:
-        delta = _DIRECTION_MAP.get(arg.upper())
-        if delta is None: return None
+
+    if cmd == "MOVE" and arg_str:
+        delta = _DIRECTION_MAP.get(arg_str.upper())
+        if delta is None: 
+            print(f"[DEBUG _parse_single_action_segment] Invalid direction for MOVE: {arg_str}")
+            return None
         return MoveAction(actor=actor, dx=delta[0], dy=delta[1])
-    if cmd == "ATTACK" and arg.isdigit():
-        return AttackAction(actor=actor, target=int(arg))
-    if cmd == "LOG": # Allow LOG without message for simplicity, or LOG with message
-        return LogAction(actor=actor, message=arg) # arg can be empty
-    if cmd == "IDLE" and not arg: # IDLE should not have arguments
+    if cmd == "ATTACK" and arg_str.isdigit():
+        return AttackAction(actor=actor, target=int(arg_str))
+    if cmd == "LOG": 
+        return LogAction(actor=actor, message=arg_str) 
+    if cmd == "IDLE" and not arg_str:
         return IdleAction(actor=actor)
-    # Add other action parsing here (GENERATE_ABILITY, USE_ABILITY, PICKUP) when ready
-    if cmd == "GENERATE_ABILITY" and arg:
-        # Placeholder: For now, let's treat it like a LOG action of the request.
-        # Actual GenerateAbilityAction would be different.
-        return LogAction(actor=actor, message=f"REQUEST_GENERATE_ABILITY: {arg}")
-    if cmd == "PICKUP" and arg.isdigit():
-        # Placeholder:
-        return LogAction(actor=actor, message=f"REQUEST_PICKUP: Item {arg}")
+    
+    if cmd == "GENERATE_ABILITY" and arg_str:
+        # <<< DEBUG PRINT ADDED >>>
+        print(f"[DEBUG _parse_single_action_segment] Matched GENERATE_ABILITY for actor {actor} with desc: '{arg_str}'")
+        return GenerateAbilityAction(actor=actor, description=arg_str)
+        
+    if cmd == "USE_ABILITY":
+        ability_parts = arg_str.split(maxsplit=1)
+        ability_name = ability_parts[0]
+        target_id_str = ability_parts[1] if len(ability_parts) > 1 else None
+        target_id = None
+        if target_id_str and target_id_str.isdigit():
+            target_id = int(target_id_str)
+        elif target_id_str: 
+            print(f"[ActionParse] Invalid target_id '{target_id_str}' for USE_ABILITY.")
+            return None 
+        return UseAbilityAction(actor=actor, ability_name=ability_name, target_id=target_id)
+    if cmd == "PICKUP" and arg_str.isdigit():
+        return PickupAction(actor=actor, item_id=int(arg_str))
 
-    return None
+    # <<< DEBUG PRINT ADDED >>>
+    print(f"[DEBUG _parse_single_action_segment] No match for cmd: '{cmd}' from segment '{command_segment}'")
+    return None # Return None if no command matched
 
 
 def parse_action_string(actor: int, text: str) -> List[Action]:
     """
     Parses a full action string from the LLM.
-    Can handle a "LOG ... MOVE X" sequence by splitting it.
-    Returns a list of actions (usually one, sometimes two if LOG+MOVE).
+    Can handle a "LOG ...\n<OTHER_ACTION> ..." sequence.
+    Returns a list of actions.
     """
     actions: List[Action] = []
-    text = text.strip()
+    raw_text = text.strip()
+    
+    # <<< DEBUG PRINT ADDED >>>
+    print(f"[DEBUG parse_action_string] PRE-SPLIT actor: {actor}, text: '{raw_text.replace(chr(10), ' // ')}'")
 
-    # Heuristic for "LOG ... MOVE X"
-    # Check if "LOG " is at the start and " MOVE " is present later
-    log_prefix = "LOG "
-    move_separator_options = [" MOVE N", " MOVE S", " MOVE E", " MOVE W"]
-    
-    parsed_complex = False
-    if text.upper().startswith(log_prefix):
-        for move_sep in move_separator_options:
-            # Case-insensitive find for " MOVE <DIR>"
-            # We need to find the start of " MOVE " to split correctly
-            move_keyword_pos = text.upper().find(move_sep) # Find " MOVE N", " MOVE S", etc.
+    lines = [line.strip() for line in raw_text.split('\n') if line.strip()]
+
+    if not lines:
+        print(f"[DEBUG parse_action_string] No non-empty lines found for actor {actor} from text: '{raw_text}'")
+        return actions
+
+    first_action_text = lines[0]
+    print(f"[DEBUG parse_action_string] Attempting to parse first_action_text: '{first_action_text}' for actor {actor}")
+    first_action = _parse_single_action_segment(actor, first_action_text)
+
+    if first_action:
+        actions.append(first_action)
+        if isinstance(first_action, LogAction) and len(lines) > 1:
+            second_action_text = lines[1]
+            print(f"[DEBUG parse_action_string] Attempting to parse second_action_text (after LOG): '{second_action_text}' for actor {actor}")
+            second_action = _parse_single_action_segment(actor, second_action_text)
+            if second_action:
+                actions.append(second_action)
+            elif second_action_text: 
+                 print(f"[ActionParse] Second line '{second_action_text}' after LOG did not parse into a valid action for actor {actor}.")
+    elif first_action_text: 
+        print(f"[ActionParse] Failed to parse primary action from: '{first_action_text}' for actor {actor}")
             
-            if move_keyword_pos > len(log_prefix): # Ensure " MOVE " is after some log message
-                log_content = text[len(log_prefix):move_keyword_pos].strip()
-                move_command_full = text[move_keyword_pos:].strip() # "MOVE N"
-                
-                log_action = _parse_single_action_segment(actor, f"LOG {log_content}")
-                move_action = _parse_single_action_segment(actor, move_command_full)
-                
-                if log_action: actions.append(log_action)
-                if move_action: actions.append(move_action)
-                
-                if log_action and move_action: # Successfully parsed both
-                    parsed_complex = True
-                    break 
-                else: # Reset if only one part parsed, fallback to single parse
-                    actions.clear()
-    
-    if not parsed_complex:
-        # Fallback to parsing the whole string as a single action
-        single_action = _parse_single_action_segment(actor, text)
-        if single_action:
-            actions.append(single_action)
-            
-    if not actions and text: # If still no actions parsed but there was text, log the failure to parse
-        print(f"[ActionParse] Failed to parse any valid action from: '{text}' for actor {actor}")
+    if not actions and raw_text: 
+        print(f"[ActionParse] Failed to parse any valid action from full text: '{raw_text}' for actor {actor}")
 
     return actions
 
@@ -129,13 +162,18 @@ class ActionQueue:
 
     def enqueue_raw(self, actor: int, text: str) -> None:
         """Parse ``text`` and enqueue the resulting action(s) if valid."""
+        print(f"[DEBUG ActionQueue.enqueue_raw PRE-PARSE] actor: {actor}, text: '{text[:100].replace(chr(10), ' // ')}'") 
         parsed_actions = parse_action_string(actor, text)
+        print(f"[DEBUG ActionQueue.enqueue_raw POST-PARSE] actor: {actor}, parsed_actions: {parsed_actions}")
+
         if parsed_actions:
             for action in parsed_actions:
                 self._queue.append(action)
-                print(f"[Tick ??] ActionQueue.enqueue_raw: Parsed '{text}' for actor {actor} into {action}. Queue size now: {len(self._queue)}")
-        # else: # Optional: Log parsing failures (now handled in parse_action_string)
-            # print(f"[Tick ??] ActionQueue.enqueue_raw: Failed to parse any action from '{text}' for actor {actor}.")
+                # Using a slightly more informative log for the actual enqueued action
+                print(f"[Tick ??] ActionQueue.enqueue_raw: Actor {actor} enqueued {type(action).__name__}({action}). Queue: {len(self._queue)}")
+        else:
+            # This log might be redundant if parse_action_string already logs failures, but good for explicit "nothing enqueued"
+            print(f"[Tick ??] ActionQueue.enqueue_raw: No valid actions parsed or enqueued from '{text[:60].replace(chr(10), ' // ')}...' for actor {actor}.")
 
 
     def pop(self) -> Optional[Action]:
@@ -147,6 +185,7 @@ class ActionQueue:
         return len(self._queue)
 
 __all__ = [
-    "MoveAction", "AttackAction", "LogAction", "IdleAction", "Action",
-    "ActionQueue", "parse_action_string", "PLAYER_ID", # Exposed parse_action_string
+    "MoveAction", "AttackAction", "LogAction", "IdleAction", 
+    "GenerateAbilityAction", "UseAbilityAction", "PickupAction", "Action",
+    "ActionQueue", "parse_action_string", "PLAYER_ID",
 ]

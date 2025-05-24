@@ -17,8 +17,9 @@ from ...core.components.ai_state import AIState
 from ...core.components.perception_cache import PerceptionCache
 from ...systems.interaction.pickup import Tag 
 from ...systems.interaction.trading import get_local_prices
-from ...systems.ai.actions import PLAYER_ID
+from ...systems.ai.actions import PLAYER_ID 
 from .llm_manager import LLMManager
+from ...systems.ability.ability_system import AbilitySystem # For listing known abilities
 
 _VISITED_OBJECTS_DURING_NORMALIZE: Set[int] = set()
 
@@ -108,6 +109,26 @@ def build_prompt(agent_id: int, world: World, *, memory_k: int = 5) -> str:
         "your_current_position": current_pos_str,
     }
     
+    my_known_abilities_str = "None"
+    ability_system_instance = None
+    if hasattr(world, 'systems_manager') and world.systems_manager:
+        for system in world.systems_manager._systems:
+            if isinstance(system, AbilitySystem):
+                ability_system_instance = system
+                break
+    if hasattr(world, 'ability_system_instance') and world.ability_system_instance: # If directly attached
+        ability_system_instance = world.ability_system_instance
+    
+    if ability_system_instance and ability_system_instance.abilities:
+        # Filter abilities the current agent might actually be able to use or know about
+        # For now, just list all loaded ability class names
+        known_ability_names = [name for name in ability_system_instance.abilities.keys()]
+        if known_ability_names:
+            my_known_abilities_str = ", ".join(known_ability_names)
+    
+    agent_specific_world_data["my_abilities"] = my_known_abilities_str
+
+
     agent_components_dict: Dict[str, Any] = {}
     if em and cm and em.has_entity(agent_id):
         raw_components = cm._components.get(agent_id, {}) if hasattr(cm, '_components') else {}
@@ -158,7 +179,6 @@ def build_prompt(agent_id: int, world: World, *, memory_k: int = 5) -> str:
         serialized_view = f'{{"error": "Failed to serialize agent world view", "details": "{str(e)}"}}'
 
     price_section = "" 
-    # ... price logic ...
 
     memories = _get_memories(agent_id, memory_k)
     mem_section = ""
@@ -169,37 +189,39 @@ def build_prompt(agent_id: int, world: World, *, memory_k: int = 5) -> str:
         except TypeError:
             mem_section = "\n\nRecent Memories: <error serializing memories>"
 
-    my_ai_state = agent_specific_world_data.get("my_components", {}).get("AIState", {})
-    my_personality = my_ai_state.get("personality", "default")
-    my_goals = my_ai_state.get("goals", "None specified") # If goals is an empty list, it will show as []
-    if not my_goals: my_goals = "None specified" # Make it more readable if list is empty
+    my_ai_state_comp = agent_specific_world_data.get("my_components", {}).get("AIState", {})
+    my_personality = my_ai_state_comp.get("personality", "default")
+    my_goals_list = my_ai_state_comp.get("goals", [])
+    my_goals = ", ".join(my_goals_list) if my_goals_list else "None specified"
+
 
     player_info_string = f"Player (ID {PLAYER_ID}) is controlled by a human and is a potential interaction target." if PLAYER_ID != agent_id else "You are the player."
 
-    # --- Enhanced Prompt Instructions ---
     instructions = f"""You are Agent {agent_id}. Your personality is "{my_personality}".
 Your current position is {current_pos_str}. The world is a grid of size {world_width}x{world_height} (X from 0 to {world_width-1}, Y from 0 to {world_height-1}).
-IMPORTANT: Do NOT attempt to MOVE outside these boundaries. If at a boundary, choose a different direction or action.
+IMPORTANT: Do NOT attempt to MOVE outside these boundaries. If at a boundary, choose a different valid direction or action.
 {player_info_string}
 
-Your primary directive is to explore actively and interact intelligently.
+Your primary directive is to explore actively and interact intelligently with your environment and other entities.
 Your current specific goals: {my_goals}
+Abilities you currently know: {my_known_abilities_str}. (If an ability was just generated, it might appear here next turn).
 
 Available Actions (Strictly respond with ONLY ONE action string from this list, followed by arguments if any):
 - "MOVE <N|S|E|W>": Move one step. Example: "MOVE N"
 - "ATTACK <target_id>": Attack a visible NPC or entity with the given ID. Example: "ATTACK 15"
 - "LOG <message>": Record a message, observation, or plan. Example: "LOG Found an ore deposit at my location. Will try to mine it later."
 - "IDLE": Do nothing this turn. (Use sparingly, prefer active exploration or observation).
-- "GENERATE_ABILITY <description>": Request a new ability if you are stuck or need a new capability. Be specific. Example: "GENERATE_ABILITY create a map of explored areas"
-- "USE_ABILITY <ability_name> [target_id]": Use an existing ability you possess. Example: "USE_ABILITY MeleeStrike 15" (Target is optional for some abilities)
-- "PICKUP <item_id>": Attempt to pick up a visible item if it's useful. Example: "PICKUP 4" (Note: This action's success depends on game rules.)
+- "GENERATE_ABILITY <description>": Request a new ability if you are stuck or need a new capability. Be specific about what it should do. The generated ability name will be based on your description. Example: "GENERATE_ABILITY create a bright light around me to see in dark areas"
+- "USE_ABILITY <AbilityClassName> [target_id]": Use an existing ability you possess. Get AbilityClassName from your 'known abilities' list or from a previously generated ability. Example: "USE_ABILITY MeleeStrike 15" or "USE_ABILITY LightSourceAbility" (Target is optional for some abilities)
+- "PICKUP <item_id>": Attempt to pick up a visible item if it's useful. Example: "PICKUP 4"
 
 Decision Process:
-1. Observe your `my_components` and `visible_entities`.
+1. Observe your `my_components`, `my_abilities`, and `visible_entities`.
 2. Consider your `personality` and `goals`.
-3. If you are at a world boundary (e.g., X=0, X={world_width-1}, Y=0, Y={world_height-1}), DO NOT try to move further in that direction. Choose another valid move or action.
-4. Formulate a plan or a single action. If you plan multiple steps, use LOG for the plan then take the first step.
-5. If you see something interesting (item, another NPC), LOG it and consider how to interact based on your goals.
+3. If you are at a world boundary, DO NOT try to move further in that direction. Choose another valid move or action.
+4. If you need a new skill for your goals or to overcome an obstacle, use "GENERATE_ABILITY <description>". After it's generated (you'll see it in your known abilities on a later turn), you can use it with "USE_ABILITY <AbilityClassName>".
+5. Formulate a plan or a single action. If you plan multiple steps, use LOG for the plan then take the first step.
+6. If you see something interesting (item, another NPC), LOG it and consider how to interact based on your goals.
 """
 
     prompt = f"{instructions}\n--- Current World State for Agent {agent_id} (Tick: {tm.tick_counter if tm else 'N/A'}) ---\n{serialized_view}{mem_section}{price_section}\n\nYour Action:"

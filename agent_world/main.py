@@ -218,9 +218,24 @@ def start_autosave(
     return t
 
 
+
+# agent_world/main.py
+"""World bootstrap and minimal tick loop."""
+
+# ... (all existing imports) ...
+from .core.components.ai_state import AIState # Ensure AIState is imported for goal setting
+from .systems.movement.pathfinding import set_obstacles, clear_obstacles # For setting obstacles
+
+
+# ... (bootstrap, load_or_bootstrap, start_autosave functions remain the same) ...
+
+
 def main() -> None:
     pygame.init()
     pygame.font.init()
+
+    # --- SCENARIO SETUP: Clear any persistent obstacles from previous runs ---
+    clear_obstacles() # Clear obstacles at the start of each run for this scenario
 
     world = load_or_bootstrap()
 
@@ -237,22 +252,52 @@ def main() -> None:
 
     tm = world.time_manager
     actual_renderer = Renderer()
+    world.ability_system_instance = None # Ensure it's reset if world is reloaded
+    for system in world.systems_manager._systems: # Find and assign AbilitySystem instance
+        if isinstance(system, AbilitySystem):
+            world.ability_system_instance = system
+            break
+    if not world.ability_system_instance:
+        print("[Main WARNING] AbilitySystem instance not found on world object after bootstrap!")
 
-    world_center_x = world.size[0] / 2.0
-    world_center_y = world.size[1] / 2.0
-    actual_renderer.set_camera_center(world_center_x, world_center_y)
+
+    world_center_x = world.size[0] // 2
+    world_center_y = world.size[1] // 2
+    actual_renderer.set_camera_center(float(world_center_x), float(world_center_y))
     print(f"Initial camera center set to: ({actual_renderer.camera_world_x}, {actual_renderer.camera_world_y})")
 
     initial_spawn_state = {"renderer": actual_renderer}
-    execute("spawn", ["npc", str(int(world_center_x)), str(int(world_center_y))], world, initial_spawn_state)
-    execute("spawn", ["npc", str(int(world_center_x + 3)), str(int(world_center_y + 2))], world, initial_spawn_state)
-    execute("spawn", ["item", str(int(world_center_x - 3)), str(int(world_center_y - 2))], world, initial_spawn_state)
 
-    # --- MODIFICATION: Install GUI hook at startup if world.gui_enabled is True ---
+    # --- SCENARIO FOR ABILITY GENERATION ---
+    # Agent 2 starts at (50, 50)
+    agent2_id = execute("spawn", ["npc", str(world_center_x), str(world_center_y)], world, initial_spawn_state)
+    
+    if agent2_id and world.component_manager:
+        ai_state_agent2 = world.component_manager.get_component(agent2_id, AIState)
+        if ai_state_agent2:
+            ai_state_agent2.goals = ["Acquire item 100"] # Specific goal
+            print(f"[Scenario] Agent {agent2_id} given goal: {ai_state_agent2.goals}")
+
+    # Item 100 at (50, 48) - two steps North
+    item_id_100 = execute("spawn", ["item", str(world_center_x), str(world_center_y - 2)], world, initial_spawn_state)
+    if item_id_100: # Ensure item ID is what we expect or update goal if not
+        if item_id_100 != 100 and agent2_id and world.component_manager: # Adjust goal if ID is different
+            ai_state_agent2 = world.component_manager.get_component(agent2_id, AIState)
+            if ai_state_agent2: ai_state_agent2.goals = [f"Acquire item {item_id_100}"]
+
+    # Obstacle at (50, 49) - directly between agent and item
+    obstacle_pos = (world_center_x, world_center_y - 1)
+    set_obstacles([obstacle_pos])
+    print(f"[Scenario] Obstacle placed at {obstacle_pos}")
+    
+    # Optional: Spawn a second NPC away from the scenario
+    # execute("spawn", ["npc", str(world_center_x + 10), str(world_center_y + 10)], world, initial_spawn_state)
+    # --- END SCENARIO ---
+
+
     if world.gui_enabled and actual_renderer:
-        install_gui_rendering_hook(world, actual_renderer) # Uses the imported function
+        install_gui_rendering_hook(world, actual_renderer)
         print("[Main] GUI rendering hook installed on startup as world.gui_enabled is True.")
-    # --- END MODIFICATION ---
 
     paused = False
     step_once = False
@@ -265,6 +310,7 @@ def main() -> None:
 
     try:
         while running:
+            # ... (main loop remains largely the same as your last provided version) ...
             gui_events_state = {
                 "paused": paused, "running": running,
                 "fps_enabled": world.fps_enabled, "renderer": actual_renderer
@@ -292,8 +338,6 @@ def main() -> None:
                 paused = cli_command_state["paused"]
                 running = cli_command_state["running"] 
                 if cli_command_state.get("step"): step_once = True
-                # world.gui_enabled is now managed by the 'execute' function for /gui
-                # and by initial bootstrap/load state.
                 world.fps_enabled = cli_command_state["fps_enabled"]
             if not running: break
 
@@ -301,20 +345,12 @@ def main() -> None:
                 if world.raw_actions_with_actor:
                     print(f"[Tick {tm.tick_counter}] MainLoop: Raw AI actions to process: {world.raw_actions_with_actor}")
 
-                # print(f"[Tick {tm.tick_counter}] MainLoop: world.action_queue IS {'NOT None' if world.action_queue is not None else 'None'}") # Can be verbose
-
                 if world.raw_actions_with_actor and world.action_queue is not None:
-                    # print(f"[Tick {tm.tick_counter}] MainLoop: Processing {len(world.raw_actions_with_actor)} raw actions into ActionQueue.") # Can be verbose
                     for actor_id, action_text in world.raw_actions_with_actor:
                        world.action_queue.enqueue_raw(actor_id, action_text)
                     world.raw_actions_with_actor.clear()
                 elif world.raw_actions_with_actor and world.action_queue is None:
                     print(f"[Tick {tm.tick_counter}] MainLoop: CRITICAL - world.action_queue is None, cannot process raw actions.")
-
-
-                if world.action_queue and len(world.action_queue._queue) > 0:
-                    # print(f"[Tick {tm.tick_counter}] MainLoop: ActionQueue contents before exec: {list(world.action_queue._queue)}") # Can be verbose
-                    pass
 
                 if world.systems_manager:
                     world.systems_manager.update(world, tm.tick_counter)
@@ -330,9 +366,9 @@ def main() -> None:
                     time.sleep(0.016) 
 
             current_time = time.time()
-            if current_time - last_debug_print_time >= 10.0:
-                last_debug_print_time = current_time
-
+            # if current_time - last_debug_print_time >= 10.0: # Reduce log spam from this
+            #     last_debug_print_time = current_time
+            
             clock.tick(60)
 
     except KeyboardInterrupt:
@@ -345,6 +381,7 @@ def main() -> None:
              cli_input_thread.join(timeout=1.0)
         if pygame.get_init():
             pygame.quit()
+        clear_obstacles() # Clean up obstacles for next run if app closes unexpectedly
 
 if __name__ == "__main__":
     main()
