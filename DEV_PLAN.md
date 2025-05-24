@@ -21,7 +21,7 @@ Task outline:
 Reinforcement:
   - Std-lib only.
 
-Task 1-A-2
+✓ Task 1-A-2
 Developer @dev-bob
 Files allowed to edit:
   └─ agent_world/core/entity_manager.py
