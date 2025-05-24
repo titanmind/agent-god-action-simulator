@@ -74,6 +74,12 @@ class Renderer:
         self.camera_world_y -= dy_screen / self.zoom
 
 
+    def center_on_entity(self, entity_id: int) -> None:
+        """Center the camera on the given entity (stub)."""
+        # Stub implementation – real centering logic added later
+        pass
+
+
     def world_to_screen(self, world_x: float, world_y: float) -> tuple[int, int]:
         if not self.window: return 0, 0
         screen_center_px_x = self.window.size[0] / 2
