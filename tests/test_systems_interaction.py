@@ -71,6 +71,8 @@ def test_trading_swaps_items():
     world.component_manager.add_component(b, Position(0, 0))
     world.component_manager.add_component(a, Inventory(capacity=2))
     world.component_manager.add_component(b, Inventory(capacity=2))
+    world.component_manager.add_component(a, Relationship(reputation=5))
+    world.component_manager.add_component(b, Relationship(reputation=5))
 
     cm = world.component_manager
     cm.get_component(a, Inventory).items.append(item_a)
@@ -83,6 +85,10 @@ def test_trading_swaps_items():
     inv_b = cm.get_component(b, Inventory)
     assert inv_a.items == [item_b]
     assert inv_b.items == [item_a]
+    rel_a = cm.get_component(a, Relationship)
+    rel_b = cm.get_component(b, Relationship)
+    assert rel_a.reputation == 6
+    assert rel_b.reputation == 6
 
 
 def test_stealing_penalizes_reputation():

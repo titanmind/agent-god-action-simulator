@@ -7,6 +7,7 @@ from typing import Any
 
 from ...core.components.position import Position
 from ...core.components.inventory import Inventory
+from ...core.components.ownership import Ownership
 
 
 @dataclass
@@ -55,6 +56,13 @@ class PickupSystem:
 
                 if len(inv.items) >= inv.capacity:
                     continue
+
+                # Copy or assign ownership to the item
+                ownership = cm.get_component(other_id, Ownership)
+                if ownership is None:
+                    cm.add_component(other_id, Ownership(owner_id=entity_id))
+                else:
+                    ownership.owner_id = entity_id
 
                 inv.items.append(other_id)
                 em.destroy_entity(other_id)
