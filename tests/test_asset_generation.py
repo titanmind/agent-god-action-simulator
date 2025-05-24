@@ -1,4 +1,3 @@
-import os
 from pathlib import Path
 
 from PIL import Image
@@ -31,6 +30,11 @@ def test_get_sprite_generates_and_caches(tmp_path: Path, monkeypatch) -> None:
     img2 = sprite_gen.get_sprite(7)
     assert img1 is img2
 
+    outline = (255, 0, 0)
+    img3 = sprite_gen.get_sprite(7, outline_colour=outline)
+    assert isinstance(img3, Image.Image)
+    assert img3 is sprite_gen.get_sprite(7, outline_colour=outline)
+
 
 def test_sprite_cache_eviction(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(sprite_gen, "ASSETS_DIR", tmp_path)
@@ -44,6 +48,6 @@ def test_sprite_cache_eviction(tmp_path: Path, monkeypatch) -> None:
     sprite_gen.get_sprite(3)
 
     assert len(sprite_gen._SPRITE_CACHE) == 2
-    assert 1 in sprite_gen._SPRITE_CACHE
-    assert 3 in sprite_gen._SPRITE_CACHE
-    assert 2 not in sprite_gen._SPRITE_CACHE
+    assert (1, None) in sprite_gen._SPRITE_CACHE
+    assert (3, None) in sprite_gen._SPRITE_CACHE
+    assert (2, None) not in sprite_gen._SPRITE_CACHE
