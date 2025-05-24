@@ -1,8 +1,38 @@
 from __future__ import annotations
 
 import json
+import gzip
+import shutil
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Iterator, List
+
+import yaml
+
+
+def _log_retention_bytes() -> int:
+    """Return log rotation threshold in bytes from ``config.yaml``."""
+    path = Path(__file__).resolve().parents[2] / "config.yaml"
+    default_mb = 50
+    if path.exists():
+        try:
+            with open(path, "r", encoding="utf-8") as fh:
+                cfg = yaml.safe_load(fh) or {}
+            default_mb = int(cfg.get("cache", {}).get("log_retention_mb", default_mb))
+        except Exception:
+            pass
+    return default_mb * 1024 * 1024
+
+
+def _rotate_log(path: Path) -> None:
+    """Compress ``path`` and clear it for new events."""
+    ts = datetime.utcnow().strftime("%Y%m%d_%H%M")
+    rotated = path.with_name(f"{path.stem}_{ts}{path.suffix}")
+    path.rename(rotated)
+    gz_path = rotated.with_suffix(rotated.suffix + ".gz")
+    with open(rotated, "rb") as src, gzip.open(gz_path, "wb") as dst:
+        shutil.copyfileobj(src, dst)
+    rotated.unlink()
 
 
 def append_event(
@@ -18,6 +48,9 @@ def append_event(
     p = Path(dest)
     if not p.parent.exists():
         p.parent.mkdir(parents=True, exist_ok=True)
+
+    if p.exists() and p.stat().st_size >= _log_retention_bytes():
+        _rotate_log(p)
 
     with p.open("a", encoding="utf-8") as fh:
         fh.write(json.dumps(event, ensure_ascii=False) + "\n")
