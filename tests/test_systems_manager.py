@@ -1,4 +1,6 @@
 from agent_world.core.systems_manager import SystemsManager
+from agent_world.systems.movement.physics_system import PhysicsSystem
+from agent_world.systems.movement.movement_system import MovementSystem
 
 
 class DummySystem:
@@ -31,3 +33,25 @@ def test_update_calls_systems_in_order():
     sm.update(42)
     assert a.calls == [42]
     assert b.calls == [42]
+
+
+def test_physics_inserted_before_movement():
+    sm = SystemsManager()
+    move = MovementSystem(None)
+    phys = PhysicsSystem(None)
+
+    sm.register(move)
+    sm.register(phys)
+
+    assert list(sm) == [phys, move]
+
+
+def test_register_order_reversed():
+    sm = SystemsManager()
+    move = MovementSystem(None)
+    phys = PhysicsSystem(None)
+
+    sm.register(phys)
+    sm.register(move)
+
+    assert list(sm) == [phys, move]
