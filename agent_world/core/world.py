@@ -1,10 +1,14 @@
+
 """Simple world container for core managers and tile map."""
 
 from __future__ import annotations
 
-from typing import Any, List, Tuple
+from typing import Any, List, Tuple, TYPE_CHECKING
 
 from ..utils.asset_generation import noise
+
+if TYPE_CHECKING:
+    from ..systems.ai.actions import ActionQueue # Forward reference for type hint
 
 
 class World:
@@ -18,11 +22,18 @@ class World:
         ]
 
         # These managers will be populated during the bootstrapping phase.
-        self.entity_manager = None
-        self.component_manager = None
-        self.systems_manager = None
-        self.time_manager = None
-        self.spatial_index = None
+        self.entity_manager: Any | None = None # More specific types can be added if available
+        self.component_manager: Any | None = None
+        self.systems_manager: Any | None = None
+        self.time_manager: Any | None = None
+        self.spatial_index: Any | None = None
+
+        # For action processing
+        self.action_queue: ActionQueue | None = None
+        self.raw_actions_with_actor: List[Tuple[int, str]] | None = None # Stores (actor_id, action_string)
+
+        # For GUI state
+        self.gui_enabled: bool = False
 
         # Pre-computed glyph/colour data for resource types
         self._resource_defs = {

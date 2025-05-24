@@ -1,8 +1,9 @@
+
 """Basic LLM reasoning loop for AI-controlled agents."""
 
 from __future__ import annotations
 
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Tuple
 
 from ...core.components.ai_state import AIState
 from ...ai.llm.prompt_builder import build_prompt
@@ -17,12 +18,12 @@ class AIReasoningSystem:
         self,
         world: Any,
         llm: LLMManager,
-        action_queue: List[str],
+        action_tuples_list: List[Tuple[int, str]],
         behavior_tree: Optional[BehaviorTree] = None,
     ) -> None:
         self.world = world
         self.llm = llm
-        self.action_queue = action_queue
+        self.action_tuples_list = action_tuples_list
         self.behavior_tree = behavior_tree or build_fallback_tree()
 
     # ------------------------------------------------------------------
@@ -44,11 +45,14 @@ class AIReasoningSystem:
 
             prompt = build_prompt(entity_id, self.world)
             action_str = self.llm.request(prompt, timeout=0.05)
-            if action_str == "<wait>":
+            
+            if action_str == "<wait>" and self.behavior_tree:
                 fallback = self.behavior_tree.run(entity_id, self.world)
                 if fallback is not None:
                     action_str = fallback
-            self.action_queue.append(action_str)
+            
+            if action_str and action_str != "<wait>": # Only append if not empty and not <wait>
+                self.action_tuples_list.append((entity_id, action_str))
 
 
 __all__ = ["AIReasoningSystem"]
