@@ -10,6 +10,8 @@ import uuid
 from pathlib import Path
 from typing import Any, Tuple
 
+import httpx
+
 import yaml
 
 from .cache import LLMCache
@@ -100,8 +102,36 @@ class LLMManager:
         """Handle a single queued prompt and populate the cache."""
 
         prompt, fut, prompt_id = await self.queue.get()
-        await asyncio.sleep(0.1)
-        result = f"action_for_{prompt_id}"
+
+        result = "<wait>"
+        if self.offline:
+            if self.mode == "echo":
+                lines = [ln.strip() for ln in prompt.splitlines() if ln.strip()]
+                result = lines[-1] if lines else ""
+        else:
+            url = "https://openrouter.ai/api/v1/chat/completions"
+            headers = {
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json",
+            }
+            payload = {
+                "model": self.model,
+                "messages": [{"role": "user", "content": prompt}],
+            }
+            try:
+                async with httpx.AsyncClient(timeout=15) as client:
+                    resp = await client.post(url, json=payload, headers=headers)
+                    resp.raise_for_status()
+                    data = resp.json()
+                    result = (
+                        str(data.get("choices", [{}])[0]
+                            .get("message", {})
+                            .get("content", ""))
+                        .strip()
+                    )
+            except (httpx.HTTPStatusError, httpx.RequestError, KeyError):
+                result = "<error_llm_call>"
+
         self.cache.put(prompt, result)
         if not fut.done():
             fut.set_result(result)
