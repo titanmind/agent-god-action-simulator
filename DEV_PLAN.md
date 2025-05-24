@@ -442,6 +442,232 @@ Outline:
 
 ---
 
+## Phase 13 · Stub Smash & Core Completeness
+_Eliminate every “# Placeholder” and finish the core data model._
+
+### Wave 13-A (3 parallel tasks)
+
+```
+
+Task 13-A-1
+Developer **@dev-alice**
+Files allowed:
+└─ agent\_world/core/components/physics.py
+└─ agent\_world/systems/movement/movement\_system.py
+Outline:
+• Implement `Physics(mass:float, vx:float, vy:float, friction:float)` dataclass.
+• Extend `MovementSystem` to integrate velocity from `Physics` if a `Velocity` component is absent.
+• Cap speed by friction each tick.
+
+Task 13-A-2
+Developer **@dev-bob**
+Files allowed:
+└─ agent\_world/core/components/ownership.py
+└─ agent\_world/systems/interaction/pickup.py
+Outline:
+• Define `Ownership(owner_id:int)`; update `PickupSystem` to copy ownership when items are picked up.
+
+Task 13-A-3
+Developer **@dev-charlie**
+Files allowed:
+└─ agent\_world/core/components/relationship.py
+└─ agent\_world/systems/interactions/stealing.py
+└─ agent\_world/systems/interactions/trading.py
+Outline:
+• Implement `Relationship(faction:str, reputation:int)`.
+• Factor reputation deltas (+/-) into Stealing & Trading systems.
+
+```
+
+### Wave 13-B (2 parallel tasks)
+
+```
+
+Task 13-B-1
+Developer **@dev-dana**
+Files allowed:
+└─ agent\_world/utils/hot\_reload.py
+Outline:
+• File-watcher (polling) that notices changes in any `abilities/generated/*.py` file and triggers a callback (`on_change`).
+• Must run in a lightweight thread; no external deps.
+
+Task 13-B-2
+Developer **@dev-elliot**
+Files allowed:
+└─ agent\_world/utils/asset\_generation/color\_palettes.py
+Outline:
+• Provide a deterministic HSV → RGB palette generator.
+• Expose `get_palette(faction:str, n:int)` returning list\[tuple\[int,int,int]].
+• Used by `sprite_gen.py` if available.
+
+```
+
+### Wave 13-C (1 task)
+
+```
+
+Task 13-C-1
+Developer **@dev-fay**
+Files allowed:
+└─ agent\_world/persistence/incremental\_save.py
+└─ agent\_world/main.py   (# PERSISTENCE HOOK only)
+Outline:
+• Implement delta-compression snapshots every **5 ticks**; store under `saves/<world_id>/increments/`.
+• Hook into the existing auto-save thread.
+• Provide `load_incremental(path)` helper for replays.
+
+```
+
+### Wave 13-D (2 parallel tasks)
+
+```
+
+Task 13-D-1
+Developer **@dev-glen**
+Files allowed:
+└─ agent\_world/abilities/builtin/melee.py
+Outline:
+• Built-in `MeleeStrike` ability that calls `CombatSystem.attack()` and respects energy/cooldown.
+
+Task 13-D-2
+Developer **@dev-hana**
+Files allowed:
+└─ agent\_world/abilities/builtin/ranged.py
+Outline:
+• `ArrowShot` ability with LOS check & ammo cost (consume item from `Inventory`).
+
+```
+
+---
+
+## Phase 14 · Crafting + Resource Loop
+
+### Wave 14-A (2 parallel tasks)
+
+```
+
+Task 14-A-1
+Developer **@dev-ian**
+Files allowed:
+└─ agent\_world/systems/interaction/crafting.py
+Outline:
+• JSON-driven recipe table (`recipes.json` under project root).
+• `craft(entity_id, recipe_id)` consumes inputs from `Inventory`, produces outputs, and logs an event.
+
+Task 14-A-2
+Developer **@dev-jade**
+Files allowed:
+└─ agent\_world/utils/asset\_generation/noise.py
+└─ agent\_world/core/world.py
+Outline:
+• Procedurally place “resource nodes” (ore, wood, herbs) on the map using white‐noise thresholding.
+• Expose `World.spawn_resource(kind, x, y)` helper.
+
+```
+
+### Wave 14-B (after 14-A)
+
+```
+
+Task 14-B-1
+Developer **@dev-root**
+Files allowed:
+└─ agent\_world/systems/interaction/trading.py
+└─ agent\_world/ai/llm/prompt\_builder.py
+Outline:
+• Dynamic price model: every resource + item gets a `base_value`; adjust by local supply (count in 10-tile radius).
+• Expose prices to LLM via prompt\_builder so agents can reason about profit.
+
+```
+
+---
+
+## Phase 15 · CLI & Debug Finishing Touches
+
+### Wave 15-A (2 parallel tasks)
+
+```
+
+Task 15-A-1
+Developer **@dev-zoe**
+Files allowed:
+└─ agent\_world/utils/cli/commands.py
+└─ agent\_world/utils/observer.py
+Outline:
+• Add `/fps` command → toggle `observer.toggle_live_fps()`.
+• Print FPS each tick when enabled.
+
+Task 15-A-2
+Developer **@dev-alice**
+Files allowed:
+└─ agent\_world/utils/cli/commands.py
+└─ agent\_world/utils/cli/command\_parser.py
+Outline:
+• Implement `/spawn <ability|item|npc>` and `/debug <entity_id>` (prints component dump).
+• Both commands must be non-blocking and safe when the world is paused.
+
+```
+
+---
+
+## Phase 16 · Physics System
+
+### Wave 16-A (1 task)
+
+```
+
+Task 16-A-1
+Developer **@dev-bob**
+Files allowed:
+└─ agent\_world/systems/movement/physics\_system.py   (new)
+└─ agent\_world/core/systems\_manager.py
+Outline:
+• New `PhysicsSystem` integrates forces → velocity, applies basic collision resolution vs OBSTACLES.
+• Register into SystemsManager before MovementSystem.
+
+```
+
+---
+
+## Phase 17 · Docs, Tests & Release Prep
+
+### Wave 17-A (2 parallel tasks)
+
+```
+
+Task 17-A-1
+Developer **@dev-charlie**
+Files allowed:
+└─ README.md
+└─ AGENTS.md
+└─ docs/ (create if absent)
+Outline:
+• Flesh out full user + contributor docs, add “Running with OpenRouter” section, diagram of ECS flow, FAQ.
+
+Task 17-A-2
+Developer **@dev-dana**
+Files allowed:
+└─ tests/  (add new test modules only)
+Outline:
+• Bring coverage ≥ 95 % across new systems (hot\_reload, crafting, physics, palettes).
+• CI must pass with and without `.env`; mock internet as needed.
+
+```
+
+---
+
+### ✅ **Completion Criteria (Ph 17)**
+* Zero remaining “# Placeholder” comments.  
+* `python main.py` ticks at ≥ 10 Hz with ≥ 5 k entities.  
+* All CLI commands work.  
+* Persistent saves: full snapshot **and** incremental replay load without divergence.  
+* Unit-test coverage ≥ 95 %.  
+* Up-to-date docs & changelog.
+
+---
+
+
+
 ### Completion Criteria
 
 * All phases merged without file-scope conflicts.
