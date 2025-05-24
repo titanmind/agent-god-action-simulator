@@ -75,8 +75,18 @@ class AIReasoningSystem:
             if ai_comp is None:
                 continue
 
-            if tm.tick_counter <= ai_comp.last_llm_action_tick + COOLDOWN_TICKS and ai_comp.last_llm_action_tick != -1:
-                continue 
+            bypass_cooldown = False
+            if ai_comp.needs_immediate_rethink:
+                ai_comp.needs_immediate_rethink = False
+                bypass_cooldown = True
+
+            if (
+                not bypass_cooldown
+                and tm.tick_counter
+                <= ai_comp.last_llm_action_tick + COOLDOWN_TICKS
+                and ai_comp.last_llm_action_tick != -1
+            ):
+                continue
 
             final_action_to_take: str | None = None
             llm_attempt_made_or_resolved = False # Track if we interacted with LLM this tick
