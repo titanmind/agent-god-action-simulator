@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from .pathfinding import is_blocked
+
 from ...core.components.position import Position
 
 
@@ -31,6 +33,7 @@ class MovementSystem:
         em = getattr(self.world, "entity_manager", None)
         cm = getattr(self.world, "component_manager", None)
         index = getattr(self.world, "spatial_index", None)
+        size = getattr(self.world, "size", (0, 0))
         if em is None or cm is None or index is None:
             return
 
@@ -41,8 +44,17 @@ class MovementSystem:
                 continue
 
             old_pos = (pos.x, pos.y)
-            pos.x += vel.dx
-            pos.y += vel.dy
+
+            new_x = pos.x + vel.dx
+            new_y = pos.y + vel.dy
+            width, height = size
+            if (
+                0 <= new_x < width
+                and 0 <= new_y < height
+                and not is_blocked((new_x, new_y))
+            ):
+                pos.x = new_x
+                pos.y = new_y
 
             if old_pos != (pos.x, pos.y):
                 index.remove(entity_id)
