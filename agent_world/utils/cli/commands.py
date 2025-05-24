@@ -6,18 +6,20 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict, Iterable, TYPE_CHECKING
 
-from ...core.components.position import Position # For PLAYER_ID check in spawn
+from ...core.components.position import Position
 from ...core.components.health import Health
 from ...core.components.inventory import Inventory
-from ...core.components.ai_state import AIState
-from ...systems.interaction.pickup import Tag 
-from ...systems.ai.actions import PLAYER_ID # Import PLAYER_ID
+from ...core.components.ai_state import AIState # For spawning NPCs with AI
+from ...core.components.physics import Physics # For spawning NPCs with Physics
+from ...core.components.perception_cache import PerceptionCache # <<< ADDED
+from ...systems.interaction.pickup import Tag
+from ...systems.ai.actions import PLAYER_ID
 
 from ...persistence.save_load import save_world
-from ..observer import install_tick_observer, toggle_live_fps, print_fps as observer_print_fps 
+from ..observer import install_tick_observer, toggle_live_fps, print_fps as observer_print_fps
 
 if TYPE_CHECKING:
-    from ...gui.renderer import Renderer 
+    from ...gui.renderer import Renderer
 
 try:
     from ..profiling import profile_ticks
@@ -59,8 +61,8 @@ def reload_abilities(world: Any) -> None:
         return
     reloaded_count = 0
     for system in sm:
-        if hasattr(system, "abilities") and hasattr(system, "_load_all"): 
-            load_all_method = getattr(system, "_load_all", None) 
+        if hasattr(system, "abilities") and hasattr(system, "_load_all"):
+            load_all_method = getattr(system, "_load_all", None)
             if callable(load_all_method):
                 try:
                     load_all_method()
@@ -73,7 +75,7 @@ def reload_abilities(world: Any) -> None:
 
 def profile(world: Any, ticks_str: str | None = None) -> None:
     try:
-        num_ticks = int(ticks_str) if ticks_str else 100 
+        num_ticks = int(ticks_str) if ticks_str else 100
         if num_ticks <=0:
             print("Number of ticks must be positive.")
             return
@@ -92,7 +94,7 @@ def profile(world: Any, ticks_str: str | None = None) -> None:
             raw_aq.clear()
         if sm and tm:
             sm.update(world, tm.tick_counter)
-            tm.tick_counter += 1 
+            tm.tick_counter += 1
     if not (tm and sm and aq is not None and raw_aq is not None):
         print("World components missing for profiling callback setup.")
         return
@@ -110,36 +112,45 @@ def spawn(world: Any, kind: str, x_str: str | None = None, y_str: str | None = N
     if em is None or cm is None or spatial_index is None:
         print("World managers not initialized for spawn.")
         return None
+
+    default_x = world.size[0] // 2 if hasattr(world, 'size') else 0
+    default_y = world.size[1] // 2 if hasattr(world, 'size') else 0
     try:
-        x = int(x_str) if x_str and x_str.lstrip('-').isdigit() else (world.size[0] // 2 if hasattr(world, 'size') else 0) # Default to center or 0
-        y = int(y_str) if y_str and y_str.lstrip('-').isdigit() else (world.size[1] // 2 if hasattr(world, 'size') else 0)
+        x = int(x_str) if x_str and x_str.lstrip('-').isdigit() else default_x
+        y = int(y_str) if y_str and y_str.lstrip('-').isdigit() else default_y
     except ValueError:
-        print("Invalid coordinates for spawn. Using defaults.")
-        x = world.size[0] // 2 if hasattr(world, 'size') else 0
-        y = world.size[1] // 2 if hasattr(world, 'size') else 0
+        print(f"Invalid coordinates for spawn ('{x_str}', '{y_str}'). Using defaults ({default_x},{default_y}).")
+        x = default_x
+        y = default_y
+
     ent_id = em.create_entity()
-    cm.add_component(ent_id, Position(x, y)) 
+    cm.add_component(ent_id, Position(x, y))
     kind_lower = kind.lower()
+
     if kind_lower == "npc":
         cm.add_component(ent_id, Health(cur=10, max=10))
         cm.add_component(ent_id, Inventory(capacity=4))
-        cm.add_component(ent_id, AIState(personality="curious explorer"))
-        print(f"Spawned NPC (ID: {ent_id}) at ({x},{y})")
+        cm.add_component(ent_id, AIState(personality="curious_explorer_" + str(ent_id), goals=[]))
+        cm.add_component(ent_id, Physics(mass=1.0, vx=0.0, vy=0.0, friction=0.95))
+        cm.add_component(ent_id, PerceptionCache(visible=[], last_tick=-1)) # <<< ADDED PerceptionCache
+        print(f"Spawned NPC (ID: {ent_id}) at ({x},{y}) with AIState, Physics, and PerceptionCache")
     elif kind_lower == "item":
-        cm.add_component(ent_id, Tag("item")) 
+        cm.add_component(ent_id, Tag("item"))
         print(f"Spawned Item (ID: {ent_id}) at ({x},{y})")
     else:
-        em.destroy_entity(ent_id) 
+        em.destroy_entity(ent_id)
         print(f"Unknown entity kind for spawn: '{kind}'. Known: npc, item.")
         return None
+
     spatial_index.insert(ent_id, (x, y))
-    # Ensure player (ID 0) also has position if actions depend on it
-    # This should ideally be handled in bootstrap more reliably
+
     if cm and not cm.get_component(PLAYER_ID, Position) and em.has_entity(PLAYER_ID):
-        default_player_pos = (world.size[0] // 2, world.size[1] // 2) if hasattr(world, 'size') else (0,0)
-        cm.add_component(PLAYER_ID, Position(*default_player_pos))
-        spatial_index.insert(PLAYER_ID, default_player_pos)
-        print(f"PLAYER_ID ({PLAYER_ID}) Position component added at {default_player_pos}.")
+        player_default_pos = (world.size[0] // 2 -1 , world.size[1] // 2) if hasattr(world, 'size') else (-1,0)
+        cm.add_component(PLAYER_ID, Position(*player_default_pos))
+        if not cm.get_component(PLAYER_ID, Physics):
+            cm.add_component(PLAYER_ID, Physics(mass=1.0, vx=0.0, vy=0.0, friction=0.95))
+        spatial_index.insert(PLAYER_ID, player_default_pos)
+        print(f"PLAYER_ID ({PLAYER_ID}) Position and Physics components ensured at {player_default_pos}.")
     return ent_id
 
 
@@ -150,21 +161,21 @@ def debug(world: Any, entity_id_str: str | None) -> None:
     em = getattr(world, "entity_manager", None); cm = getattr(world, "component_manager", None)
     if em is None or cm is None: print("World managers not initialized for debug."); return
     if not em.has_entity(entity_id): print(f"Entity {entity_id} not found."); return
-    entity_component_map = cm._components.get(entity_id) 
+    entity_component_map = cm._components.get(entity_id)
     print(f"--- Entity {entity_id} Components ---")
     if entity_component_map:
         for name, comp_instance in entity_component_map.items(): print(f"  {name}: {comp_instance}")
-    else: print("  No components found for this entity."); 
+    else: print("  No components found for this entity.");
     print("-----------------------------")
 
 
 def fps(world: Any, state: Dict[str, Any]) -> None:
     tm = getattr(world, "time_manager", None)
-    if tm is not None: install_tick_observer(tm) 
+    if tm is not None: install_tick_observer(tm)
     fps_is_now_enabled = toggle_live_fps()
-    state["fps_enabled"] = fps_is_now_enabled 
-    world.fps_enabled = fps_is_now_enabled 
-    if fps_is_now_enabled: print("Live FPS display enabled."); observer_print_fps() 
+    state["fps_enabled"] = fps_is_now_enabled
+    world.fps_enabled = fps_is_now_enabled
+    if fps_is_now_enabled: print("Live FPS display enabled."); observer_print_fps()
     else: print("Live FPS display disabled.")
 
 
@@ -178,19 +189,12 @@ def _install_gui_hook(world: Any, renderer_instance: Renderer) -> None:
 
     def gui_rendering_sleep_wrapper() -> None:
         if getattr(world, "gui_enabled", False) and renderer_instance and renderer_instance.window:
-            # print(f"Hook: GUI Enabled, Tick: {tm.tick_counter if tm else 'N/A'}") # DEBUG
-            renderer_instance.window.clear((30, 30, 30)) # Dark grey clear
-            renderer_instance.update(world) # This should draw entities, FPS text etc.
-            
-            # Explicitly draw a test rectangle to be SURE something is on screen
-            if hasattr(renderer_instance.window, '_surface'): # Check if surface exists
-                 import pygame # Local import for pygame.draw
-                 pygame.draw.rect(renderer_instance.window._surface, (255,0,0), (10,10,50,50)) # Red square
-                 pygame.draw.circle(renderer_instance.window._surface, (0,255,0), (100,100), 30) # Green circle
-
-
+            renderer_instance.window.clear((30, 30, 30))
+            renderer_instance.update(world)
+            if hasattr(renderer_instance.window, '_surface'):
+                 import pygame
             renderer_instance.window.refresh()
-        original_sleep() 
+        original_sleep()
 
     tm.sleep_until_next_tick = gui_rendering_sleep_wrapper
     tm._gui_renderer_hook_instance = renderer_instance
@@ -212,19 +216,16 @@ def gui(world: Any, state: Dict[str, Any]) -> None:
     current_gui_enabled_on_world = getattr(world, "gui_enabled", False)
     world.gui_enabled = not current_gui_enabled_on_world
     state["gui_enabled"] = world.gui_enabled
-    renderer_instance = state.get("renderer") 
+    renderer_instance = state.get("renderer")
     if renderer_instance is None:
         print("Error: Renderer not found in state. GUI cannot be managed.")
         world.gui_enabled = False; state["gui_enabled"] = False; return
     if world.gui_enabled:
         _install_gui_hook(world, renderer_instance)
         print("GUI enabled. Window should appear/update.")
-        if renderer_instance.window: # Initial render
-            renderer_instance.window.clear((30,30,30)) # Clear with a visible color
+        if renderer_instance.window:
+            renderer_instance.window.clear((30,30,30))
             renderer_instance.update(world)
-            if hasattr(renderer_instance.window, '_surface'): # Check if surface exists
-                 import pygame
-                 pygame.draw.rect(renderer_instance.window._surface, (0,0,255), (150,10,50,50)) # Blue square on toggle
             renderer_instance.window.refresh()
     else:
         _uninstall_gui_hook(world)
@@ -247,7 +248,7 @@ def help_command(state: Dict[str, Any]) -> None:
 
 def execute(command: str, args: list[str], world: Any, state: Dict[str, Any]) -> None:
     if "running" not in state: state["running"] = True
-    cmd_lower = command.lower() 
+    cmd_lower = command.lower()
     if cmd_lower == "help": help_command(state)
     elif cmd_lower == "pause": pause(state)
     elif cmd_lower == "step": step(state)
