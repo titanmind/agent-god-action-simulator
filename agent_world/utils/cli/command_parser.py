@@ -97,7 +97,13 @@ def parse_command(text: str) -> Optional[CLICommand]:
     parts = text[1:].split()
     if not parts:
         return None
-    return CLICommand(name=parts[0].lower(), args=parts[1:])
+
+    cmd = parts[0].lower()
+
+    if cmd == "follow":
+        return CLICommand(name="follow", args=parts[1:2])
+
+    return CLICommand(name=cmd, args=parts[1:])
 
 
 def poll_command() -> Optional[CLICommand]:
