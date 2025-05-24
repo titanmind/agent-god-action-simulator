@@ -37,6 +37,7 @@ class MovementSystem:
         if em is None or cm is None or index is None:
             return
 
+        batch: list[tuple[int, tuple[int, int]]] = []
         for entity_id in list(em.all_entities.keys()):
             pos = cm.get_component(entity_id, Position)
             vel = cm.get_component(entity_id, Velocity)
@@ -58,7 +59,10 @@ class MovementSystem:
 
             if old_pos != (pos.x, pos.y):
                 index.remove(entity_id)
-                index.insert(entity_id, (pos.x, pos.y))
+                batch.append((entity_id, (pos.x, pos.y)))
+
+        if batch:
+            index.insert_many(batch)
 
 
 __all__ = ["Velocity", "MovementSystem"]

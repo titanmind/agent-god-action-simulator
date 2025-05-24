@@ -30,6 +30,16 @@ class SpatialGrid:
         self._cells.setdefault(cell, set()).add(entity_id)
         self._entity_pos[entity_id] = pos
 
+    def insert_many(self, items: List[Tuple[int, Tuple[int, int]]]) -> None:
+        """Insert multiple ``(entity_id, pos)`` pairs in one batch."""
+        cell_map: Dict[Tuple[int, int], List[int]] = {}
+        for ent, pos in items:
+            cell = self._cell_coords(pos)
+            cell_map.setdefault(cell, []).append(ent)
+            self._entity_pos[ent] = pos
+        for cell, ents in cell_map.items():
+            self._cells.setdefault(cell, set()).update(ents)
+
     def remove(self, entity_id: int) -> None:
         """Remove ``entity_id`` from the index."""
         pos = self._entity_pos.pop(entity_id, None)

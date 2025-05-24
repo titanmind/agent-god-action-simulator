@@ -429,10 +429,10 @@ Outline:
 
 ---
 
-## Phase 11 — Performance & Scalability Pass
+## Phase 11 — Performance & Scalability Pass ✓
 
-* **Profiling async sections** with techniques from recent guides ([Medium][13]).
-* Stress-test 5 k entities; optimize SpatialGrid (batch inserts) and A\* (early exit).
+* **Profiling async sections** with techniques from recent guides ([Medium][13]). ✓
+* Stress-test 5 k entities; optimize SpatialGrid (batch inserts) and A\* (early exit). ✓
 
 ---
 

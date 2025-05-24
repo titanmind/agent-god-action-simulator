@@ -23,6 +23,19 @@ def test_grid_query_radius_multiple():
     assert set(grid.query_radius((10, 5), 5)) == {1, 2}
 
 
+def test_grid_batch_insert():
+    grid = SpatialGrid(10)
+    grid.insert_many([(1, (0, 0)), (2, (9, 9))])
+    assert set(grid.query_radius((5, 5), 10)) == {1, 2}
+
+
+def test_grid_large_batch():
+    grid = SpatialGrid(1)
+    batch = [(i, (i % 100, i // 100)) for i in range(5000)]
+    grid.insert_many(batch)
+    assert len(grid.query_radius((0, 0), 150)) == 5000
+
+
 def test_quadtree_wrapper():
     qt = Quadtree(10)
     qt.insert(1, (1, 1))
