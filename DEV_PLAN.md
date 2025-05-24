@@ -331,6 +331,7 @@ Task 7-A-1
 Developer @dev-frank
 Files allowed:
 └─ agent\_world/ai/angel/system.py
+└─ agent\_world/core/components/ai_state.py
 └─ tests/angel/test\_failure\_path.py
 Outline:
 • on failure return `{"status":"failure","reason":…}`; write reason to `ai_state.last_error` and set `needs_immediate_rethink`
