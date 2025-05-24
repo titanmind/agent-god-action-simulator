@@ -665,7 +665,7 @@ Outline:
 *Objective: wire the real tick-loop end-to-end, add force/impulse handling, and
 surface collision data for AI & logs.*
 
-### Wave 17-A (3 parallel tasks — **do these first**)
+### Wave 17-A (3 parallel tasks)
 
 ```
 
