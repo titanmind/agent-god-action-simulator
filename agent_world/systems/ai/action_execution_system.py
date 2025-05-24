@@ -21,6 +21,7 @@ from ...core.components.force import apply_force
 from ...core.components.physics import Physics
 from ...systems.movement.movement_system import Velocity
 from ...ai.angel import generator as angel_generator
+from ...ai.angel.system import get_angel_system
 from ...systems.ability.ability_system import AbilitySystem # <<< For finding AbilitySystem
 
 class ActionExecutionSystem:
@@ -84,12 +85,9 @@ class ActionExecutionSystem:
             elif isinstance(action, GenerateAbilityAction):
                 self.world.paused_for_angel = True
                 try:
-                    if hasattr(self.world, "get_angel_system"):
-                        result = self.world.get_angel_system().generate_and_grant(
-                            action.actor, action.description
-                        )
-                    else:
-                        result = angel_generator.generate_ability(action.description)
+                    result = get_angel_system(self.world).generate_and_grant(
+                        action.actor, action.description
+                    )
                     log_msg = (
                         f"Agent {action.actor} requested generation of ability: '{action.description}'. "
                         f"Result: {result}"
