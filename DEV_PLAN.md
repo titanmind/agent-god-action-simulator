@@ -62,6 +62,21 @@ Outline:
 • on `GenerateAbilityAction` set `world.paused_for_angel = True` before Angel call and back to False after return/exception
 • test verifies flag toggling around stub Angel execution
 
+### Wave 1-B  (stub)
+
+Task 1-B-1
+Developer @dev-alice
+Files allowed:
+└─ AGENTS.md
+└─ tests/conftest.py
+└─ tests/shims/dotenv.py
+└─ tests/integration/test_*.py
+Outline:
+• Create tests/shims/dotenv.py with FakeLoader stub
+• Add pytest_configure() in conftest to register "integration" marker
+• Decorate every integration / LLM test with @pytest.mark.integration or @skip_offline
+• Remove duplicate sentence + typo in AGENTS.md
+
 ## Phase 2 · Angel System Framework
 
 Introduce a modular AngelSystem with vault lookup and stubbed LLM generation, replacing direct template writes.

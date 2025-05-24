@@ -1,7 +1,22 @@
 # tests/conftest.py
-import pytest
+import pytest, os
+skip_offline = pytest.mark.skipif(
+    os.getenv("NO_NET", "1") == "1",
+    reason="Network-dependent – skipped in offline CI",
+)
 import httpx
 from typing import Dict, List, Any
+import sys
+from types import ModuleType
+
+# Provide stub for python-dotenv if not present
+try:
+    import dotenv  # noqa: F401
+except ModuleNotFoundError:
+    sys.modules["dotenv"] = ModuleType("dotenv")
+    from tests.shims import dotenv as _shim  # type: ignore
+    sys.modules["dotenv"].load_dotenv = _shim.FakeLoader.load_dotenv
+
 
 class MockAsyncClient:
     def __init__(self, response_map: Dict[str, List[str]], call_counts_ref: Dict[str, int]):

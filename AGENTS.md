@@ -67,9 +67,27 @@ BLOCKER <phase>-<wave>-<task>
 
 ## 7 · Deterministic LLM & Tests
 
-* The default configuration sets `llm.mode = offline`.  
+* The default configuration sets `llm.mode = offline`.
+* **Two test tiers**  
+  1. **Core / Unit** – must pass (`pytest -q tests/core tests/systems`).  
+  2. **Integration / LLM / Network** – marked `@pytest.mark.integration`; **skipped** when
+     `llm.mode == "offline"` or missing third-party packages.  
+* When you add a new test that contacts the internet or needs extra deps, decorate it:
 
-* Tests are good, but mostly you should verify functioanlity with robust consoel logging to verify shit is working.
+  ```python
+  import pytest, os
+  skip_offline = pytest.mark.skipif(
+      os.getenv("NO_NET", "1") == "1",
+      reason="Skipped in offline CI"
+  )
+
+  @skip_offline
+  def test_my_cloud_thing(): ...
+  ```
+
+* Local smoke-check:  
+  `pytest -q tests/core tests/systems`  
+  Full suite (`pytest -q`) is **not required** in the sandbox image.
 
 ---
 
