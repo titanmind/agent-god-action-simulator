@@ -25,12 +25,13 @@ class AbilitySystem:
         base_dir = Path(__file__).resolve().parents[2] / "abilities"
         builtin_dir = base_dir / "builtin"
         generated_dir = base_dir / "generated"
+        vault_dir = base_dir / "vault"
         
         # Ensure generated directory exists
         generated_dir.mkdir(parents=True, exist_ok=True)
 
         self.search_dirs: List[Path] = (
-            list(search_dirs) if search_dirs is not None else [builtin_dir, generated_dir]
+            list(search_dirs) if search_dirs is not None else [builtin_dir, generated_dir, vault_dir]
         )
         logger.info(f"AbilitySystem initialized. Searching for abilities in: {self.search_dirs}")
 
