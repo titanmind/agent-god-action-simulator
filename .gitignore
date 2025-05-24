@@ -39,3 +39,5 @@ out/
 *.iml
 
 *.env
+
+uv.lock
