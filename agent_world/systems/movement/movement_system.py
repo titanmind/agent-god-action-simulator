@@ -8,6 +8,7 @@ from typing import Any
 from .pathfinding import is_blocked
 
 from ...core.components.position import Position
+from ...core.components.physics import Physics
 
 
 @dataclass
@@ -28,7 +29,7 @@ class MovementSystem:
     # Public API
     # ------------------------------------------------------------------
     def update(self) -> None:
-        """Move all entities with ``Position`` and ``Velocity`` components."""
+        """Move all entities with ``Position`` and a velocity source."""
 
         em = getattr(self.world, "entity_manager", None)
         cm = getattr(self.world, "component_manager", None)
@@ -41,13 +42,22 @@ class MovementSystem:
         for entity_id in list(em.all_entities.keys()):
             pos = cm.get_component(entity_id, Position)
             vel = cm.get_component(entity_id, Velocity)
-            if pos is None or vel is None:
+            phys = cm.get_component(entity_id, Physics)
+            if pos is None or (vel is None and phys is None):
                 continue
 
             old_pos = (pos.x, pos.y)
 
-            new_x = pos.x + vel.dx
-            new_y = pos.y + vel.dy
+            if vel is not None:
+                dx, dy = vel.dx, vel.dy
+            else:
+                dx = int(round(phys.vx))
+                dy = int(round(phys.vy))
+                phys.vx *= phys.friction
+                phys.vy *= phys.friction
+
+            new_x = pos.x + dx
+            new_y = pos.y + dy
             width, height = size
             if (
                 0 <= new_x < width
