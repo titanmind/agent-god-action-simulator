@@ -34,7 +34,7 @@ from .systems.interaction.trading import TradingSystem
 from .systems.interaction.stealing import StealingSystem
 from .systems.interaction.crafting import CraftingSystem
 from .systems.ability.ability_system import AbilitySystem
-from .systems.ai.ai_reasoning_system import AIReasoningSystem
+from .systems.ai.ai_reasoning_system import AIReasoningSystem, RawActionCollector
 from .systems.ai.behavior_tree_system import BehaviorTreeSystem
 from .ai.behaviors.creature_bt import build_creature_tree
 from .ai.angel.system import get_angel_system
@@ -91,7 +91,7 @@ def bootstrap(config_path: str | Path = Path("config.yaml")) -> World:
 
     world.action_queue = ActionQueue()
     print(f"[Bootstrap] world.action_queue initialized: {world.action_queue is not None}")
-    world.raw_actions_with_actor = []
+    world.raw_actions_with_actor = RawActionCollector(world.action_queue)
     world.fps_enabled = False
     world.gui_enabled = True # GUI enabled by default
 
@@ -350,13 +350,6 @@ def main() -> None:
             if not running: break
 
             if not paused or step_once:
-                if world.raw_actions_with_actor and world.action_queue is not None:
-                    for actor_id, action_text in world.raw_actions_with_actor:
-                       world.action_queue.enqueue_raw(actor_id, action_text)
-                    world.raw_actions_with_actor.clear()
-                elif world.raw_actions_with_actor and world.action_queue is None:
-                    print(f"[Tick {tm.tick_counter}] MainLoop: CRITICAL - world.action_queue is None.")
-
                 if not world.paused_for_angel:
                     if world.systems_manager:
                         world.systems_manager.update(world, tm.tick_counter) # Pass world and tick
