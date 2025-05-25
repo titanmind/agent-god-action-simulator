@@ -44,8 +44,15 @@ class World:
         # For GUI state
         self.gui_enabled: bool = False
         self.paused_for_angel: bool = False
+        # Max seconds the main loop should remain paused waiting for the Angel
+        # system before auto-unpausing. Configurable via ``config.yaml``.
+        self.paused_for_angel_timeout_seconds: int = 60
         # Reference to the main CombatSystem instance
         self.combat_system_instance: Optional[CombatSystem] = None
+
+        # Optional custom file system paths (e.g. ability directories). These
+        # may be populated during bootstrap if provided in the configuration.
+        self.paths: dict[str, str] | None = None
 
         # Pre-computed glyph/colour data for resource types
         self._resource_defs = {

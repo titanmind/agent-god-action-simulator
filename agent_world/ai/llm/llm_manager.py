@@ -30,9 +30,34 @@ class LLMManager:
         *,
         api_key: str | None = None,
         model: str | None = None,
+        agent_decision_model: str | None = None,
+        angel_generation_model: str | None = None,
     ) -> None:
         self.api_key = api_key or os.getenv("OPENROUTER_API_KEY")
         self.model = model or os.getenv("OPENROUTER_MODEL")
+
+        cfg: dict[str, Any] = {}
+        project_root_config_path = Path("config.yaml")
+        if project_root_config_path.exists():
+            try:
+                cfg = yaml.safe_load(project_root_config_path.read_text()) or {}
+            except Exception:  # pylint: disable=broad-except
+                cfg = {}
+        else:
+            alt = Path(__file__).resolve().parents[3] / "config.yaml"
+            if alt.exists():
+                try:
+                    cfg = yaml.safe_load(alt.read_text()) or {}
+                except Exception:
+                    cfg = {}
+        llm_cfg = cfg.get("llm", {})
+
+        self.agent_decision_model = (
+            agent_decision_model or llm_cfg.get("agent_decision_model", self.model)
+        )
+        self.angel_generation_model = (
+            angel_generation_model or llm_cfg.get("angel_generation_model", self.model)
+        )
 
         self.mode = self.current_mode()
         self.is_ready = False # Flag to indicate worker loop is ready
