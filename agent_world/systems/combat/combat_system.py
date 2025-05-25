@@ -3,20 +3,25 @@
 from __future__ import annotations
 
 import random
-from typing import Any, List, Dict
+from typing import Any, Dict, List
 
 from ...core.components.position import Position
 from ...core.components.health import Health
 from ..combat.damage_types import DamageType
 from ..combat.defense import Defense, armor_vs, dodge_vs
+from ...persistence.event_log import (
+    append_event,
+    COMBAT_ATTACK,
+    COMBAT_DEATH,
+)
+from pathlib import Path
 
 
 class CombatSystem:
     """Handle simple melee attacks between entities."""
 
-    def __init__(self, world: Any, event_log: List[Dict[str, Any]] | None = None) -> None:
+    def __init__(self, world: Any, event_log: list[dict[str, Any]] | None = None) -> None:  # noqa: D401
         self.world = world
-        self.event_log = event_log if event_log is not None else []
 
     # ------------------------------------------------------------------
     # Helpers
@@ -72,24 +77,28 @@ class CombatSystem:
 
         hp.cur = max(hp.cur - damage, 0)
 
-        event = {
-            "type": "attack",
+        dest = getattr(self.world, "persistent_event_log_path", None)
+        if dest is None:
+            dest = Path("persistent_events.log")
+            setattr(self.world, "persistent_event_log_path", dest)
+
+        tick_val = tick
+        if tick_val is None:
+            tick_val = getattr(getattr(self.world, "time_manager", None), "tick_counter", 0)
+
+        data: Dict[str, Any] = {
             "attacker": attacker,
             "target": target,
             "damage": damage,
             "damage_type": damage_type.name,
         }
         if dodged:
-            event["dodged"] = True
-        if tick is not None:
-            event["tick"] = tick
-        self.event_log.append(event)
+            data["dodged"] = True
+        append_event(dest, tick_val, COMBAT_ATTACK, data)
 
         if hp.cur <= 0:
-            death_event = {"type": "death", "entity": target, "killer": attacker}
-            if tick is not None:
-                death_event["tick"] = tick
-            self.event_log.append(death_event)
+            death_data = {"entity": target, "killer": attacker}
+            append_event(dest, tick_val, COMBAT_DEATH, death_data)
         return True
 
 

@@ -8,6 +8,7 @@ from typing import Any, Dict, List
 
 from ...core.components.inventory import Inventory
 from ...core.components.ownership import Ownership
+from ...persistence.event_log import append_event, CRAFT
 
 
 class CraftingSystem:
@@ -17,13 +18,12 @@ class CraftingSystem:
         self,
         world: Any,
         recipe_path: str | Path | None = None,
-        event_log: List[Dict[str, Any]] | None = None,
+        event_log: list[dict[str, Any]] | None = None,
     ) -> None:
         self.world = world
         if recipe_path is None:
             recipe_path = Path(__file__).resolve().parents[3] / "recipes.json"
         self.recipes = self._load_recipes(recipe_path)
-        self.event_log = event_log if event_log is not None else []
 
     # ------------------------------------------------------------------
     # Helpers
@@ -72,14 +72,20 @@ class CraftingSystem:
             inv.items.append(item_id)
             produced.append(item_id)
 
-        event = {
-            "type": "craft",
+        dest = getattr(self.world, "persistent_event_log_path", None)
+        if dest is None:
+            dest = Path("persistent_events.log")
+            setattr(self.world, "persistent_event_log_path", dest)
+
+        tick = getattr(getattr(self.world, "time_manager", None), "tick_counter", 0)
+
+        data = {
             "entity": entity_id,
             "recipe": recipe_id,
             "consumed": consumed,
             "produced": produced,
         }
-        self.event_log.append(event)
+        append_event(dest, tick, CRAFT, data)
         return True
 
 
