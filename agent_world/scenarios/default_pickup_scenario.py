@@ -4,7 +4,7 @@ from typing import Any
 
 from .base_scenario import BaseScenario
 from ..utils.cli import commands
-from ..core.components.ai_state import AIState
+from ..core.components.ai_state import AIState, Goal
 from ..core.components.position import Position
 from ..systems.movement.pathfinding import set_obstacles, clear_obstacles
 
@@ -31,7 +31,7 @@ class DefaultPickupScenario(BaseScenario):
         if agent_id and item_id and world.component_manager:
             ai_state = world.component_manager.get_component(agent_id, AIState)
             if ai_state:
-                ai_state.goals = [f"Acquire item {item_id}"]
+                ai_state.goals = [Goal(type="Acquire", target=item_id)]
                 print(
                     f"[Scenario] Agent {agent_id} at ({center_x},{center_y}) given goal: {ai_state.goals}"
                 )

@@ -58,8 +58,23 @@ from .systems.movement.pathfinding import clear_obstacles  # For scenario obstac
 from .scenarios.default_pickup_scenario import DefaultPickupScenario
 
 
-logging.basicConfig(level=logging.INFO, force=True)
-logger = logging.getLogger(__name__)
+log_level_str = CONFIG.logging.global_level
+numeric_level = getattr(logging, log_level_str, logging.INFO)
+logging.basicConfig(
+    level=numeric_level,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    force=True
+)
+logger = logging.getLogger(__name__) # For main.py specific logs
+
+# Apply per-module levels if defined
+if CONFIG.logging.module_levels:
+    for module_name, level_str in CONFIG.logging.module_levels.items():
+        module_numeric_level = getattr(logging, level_str.upper(), None)
+        if module_numeric_level is not None:
+            logging.getLogger(module_name).setLevel(module_numeric_level)
+        else:
+            logger.warning("Invalid log level '%s' for module '%s' in config.", level_str, module_name)
 
 DEFAULT_SAVE_PATH = Path("saves/world_state.json.gz")
 AUTO_SAVE_INTERVAL = 60.0

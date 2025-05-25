@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -30,6 +30,10 @@ class LLMConfig:
     agent_decision_model: str = "google/gemini-flash-1.5-8b"
     angel_generation_model: str = "google/gemini-flash-1.5-8b"
 
+@dataclass
+class LoggingConfig: # This is defined
+    global_level: str = "INFO"
+    module_levels: Optional[Dict[str, str]] = None
 
 @dataclass
 class Config:
@@ -39,10 +43,17 @@ class Config:
     llm: LLMConfig
     paths: Optional[Dict[str, str]] = None
     cache: Optional[Dict[str, Any]] = None
+    logging: LoggingConfig = field(default_factory=LoggingConfig)
 
 
 def _parse_config(data: dict[str, Any]) -> Config:
     """Convert raw ``data`` into :class:`Config`."""
+
+    logging_data = data.get("logging", {})
+    logging_cfg = LoggingConfig(
+        global_level=logging_data.get("global_level", "INFO").upper(),
+        module_levels=logging_data.get("module_levels")
+    )
 
     world_data = data.get("world", {})
     world = WorldConfig(
@@ -64,7 +75,7 @@ def _parse_config(data: dict[str, Any]) -> Config:
     paths = data.get("paths")
     cache = data.get("cache")
 
-    return Config(world=world, llm=llm, paths=paths, cache=cache)
+    return Config(world=world, llm=llm, paths=paths, cache=cache, logging=logging_cfg)
 
 
 def load_config(path: Path = CONFIG_PATH) -> Config:
