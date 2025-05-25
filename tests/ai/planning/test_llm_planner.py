@@ -1,4 +1,6 @@
 from agent_world.core.world import World
+import asyncio
+
 from agent_world.core.entity_manager import EntityManager
 from agent_world.core.component_manager import ComponentManager
 from agent_world.core.time_manager import TimeManager
@@ -19,6 +21,19 @@ class DummyLLM:
         if "Plan" in prompt:
             return "MOVE N"
         return "IDLE"
+
+
+class AsyncDummyLLM:
+    def __init__(self):
+        self.mode = "live"
+        self.agent_decision_model = "test-model"
+        self.prompt_id = "a" * 32
+
+    def request(self, prompt: str, world: World, *, model: str | None = None):
+        fut = asyncio.Future()
+        fut.set_result("MOVE N")
+        world.async_llm_responses[self.prompt_id] = fut
+        return self.prompt_id
 
 
 def _setup_world(llm: DummyLLM) -> World:
@@ -60,3 +75,14 @@ def test_reasoning_system_uses_plan():
     assert action == "MOVE N"
     # planner prompt should have been called once
     assert len(llm.prompts) == 1
+
+
+def test_llm_planner_waits_for_async_result():
+    llm = AsyncDummyLLM()
+    planner = LLMPlanner(llm)
+    world = _setup_world(llm)
+
+    steps = planner.create_plan(1, [Goal("test", 1)], world)
+
+    assert steps and steps[0].action == "MOVE"
+    assert llm.prompt_id not in world.async_llm_responses
