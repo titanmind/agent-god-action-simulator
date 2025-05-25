@@ -11,6 +11,8 @@ import inspect
 from types import ModuleType
 from typing import Any, Dict, List, Sequence, Optional
 
+from ...config import CONFIG
+
 from ...core.events import AbilityUseEvent
 
 from ...abilities.base import Ability
@@ -26,14 +28,23 @@ GLOBAL_ABILITY_EVENT_QUEUE: List[AbilityUseEvent] = []
 class AbilitySystem:
     """Load, hot-reload and execute ability modules."""
 
-    def __init__(self, world: Any, search_dirs: Sequence[Path] | None = None) -> None:
+    def __init__(
+        self,
+        world: Any,
+        search_dirs: Sequence[Path] | None = None,
+        *,
+        paths_cfg: Optional[Dict[str, str]] = None,
+    ) -> None:
         self.world = world
         base_dir = Path(__file__).resolve().parents[2] / "abilities"
         builtin_dir = base_dir / "builtin"
         generated_dir = base_dir / "generated"
         vault_dir = base_dir / "vault"
 
-        paths_cfg = getattr(world, "paths", None)
+        if paths_cfg is None:
+            paths_cfg = getattr(world, "paths", None)
+        if paths_cfg is None:
+            paths_cfg = CONFIG.paths
         if isinstance(paths_cfg, dict):
             builtin_dir = Path(paths_cfg.get("abilities_builtin", builtin_dir))
             generated_dir = Path(paths_cfg.get("abilities_generated", generated_dir))

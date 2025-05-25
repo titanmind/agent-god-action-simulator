@@ -14,7 +14,7 @@ import shutil # Add this import
 
 from dotenv import load_dotenv
 
-import yaml
+from .config import load_config, CONFIG
 import pygame
 
 from .core.world import World
@@ -66,20 +66,11 @@ def bootstrap(config_path: str | Path = Path("config.yaml")) -> World:
     if env_path.exists(): load_dotenv(env_path)
 
     actual_config_path = Path(config_path)
-    cfg: dict[str, Any] = {}
-    if actual_config_path.is_file():
-        with open(actual_config_path, "r", encoding="utf-8") as fh: cfg = yaml.safe_load(fh) or {}
-    else:
-        project_root_config = Path(__file__).resolve().parents[1] / "config.yaml"
-        if project_root_config.is_file():
-            with open(project_root_config, "r", encoding="utf-8") as fh: cfg = yaml.safe_load(fh) or {}
-        else:
-            print(f"Warning: Config file '{config_path}' (and at project root) not found. Using defaults.")
+    cfg = load_config(actual_config_path)
 
-    world_cfg = cfg.get("world", {})
-    size = tuple(world_cfg.get("size", [100, 100]))
-    tick_rate = float(world_cfg.get("tick_rate", 10))
-    paused_timeout = int(world_cfg.get("paused_for_angel_timeout_seconds", 60))
+    size = cfg.world.size
+    tick_rate = cfg.world.tick_rate
+    paused_timeout = cfg.world.paused_for_angel_timeout_seconds
 
     world = World(size)
     world.paused_for_angel_timeout_seconds = paused_timeout
@@ -95,22 +86,18 @@ def bootstrap(config_path: str | Path = Path("config.yaml")) -> World:
     world.fps_enabled = False
     world.gui_enabled = True # GUI enabled by default
 
-    llm_cfg = cfg.get("llm", {})
-    llm_api_key = os.getenv("OPENROUTER_API_KEY") or llm_cfg.get("api_key")
-    llm_model = os.getenv("OPENROUTER_MODEL") or llm_cfg.get("model")
-    agent_decision_model = llm_cfg.get("agent_decision_model", "default/model")
-    angel_generation_model = llm_cfg.get("angel_generation_model", "default/model")
+    llm_api_key = os.getenv("OPENROUTER_API_KEY")
+    llm_model = os.getenv("OPENROUTER_MODEL")
     llm = LLMManager(
         api_key=llm_api_key,
         model=llm_model,
-        agent_decision_model=agent_decision_model,
-        angel_generation_model=angel_generation_model,
+        llm_config=cfg.llm,
     )
     print(
         f"[Bootstrap] LLM decision model: {llm.agent_decision_model}, Angel model: {llm.angel_generation_model}"
     )
 
-    paths_cfg = cfg.get("paths")
+    paths_cfg = cfg.paths
     if paths_cfg:
         world.paths = paths_cfg
         print("[Bootstrap] Custom paths configuration loaded")
@@ -123,7 +110,7 @@ def bootstrap(config_path: str | Path = Path("config.yaml")) -> World:
     sm = world.systems_manager
     physics_sys = PhysicsSystem(world) # Renamed to avoid conflict with Physics component
     movement_sys = MovementSystem(world) # Renamed
-    perception_cfg = cfg.get("perception", {})
+    perception_cfg = getattr(cfg, "perception", {}) or {}
     view_radius = int(perception_cfg.get("view_radius", 10))
     perception_sys = VisibilityPerceptionSystem(world, view_radius=view_radius)
     event_perception_sys = EventPerceptionSystem(world)

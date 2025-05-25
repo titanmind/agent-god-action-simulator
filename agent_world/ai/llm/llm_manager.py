@@ -9,11 +9,11 @@ import socket
 import threading
 import uuid
 from pathlib import Path
-from typing import Any, Tuple, Dict 
+from typing import Any, Tuple, Dict
 import json # For pretty printing JSON response
 
 import httpx
-import yaml
+from ...config import CONFIG, LLMConfig
 from ...persistence.event_log import (
     append_event,
     LLM_REQUEST,
@@ -37,34 +37,21 @@ class LLMManager:
         model: str | None = None,
         agent_decision_model: str | None = None,
         angel_generation_model: str | None = None,
+        llm_config: LLMConfig | None = None,
     ) -> None:
         self.api_key = api_key or os.getenv("OPENROUTER_API_KEY")
         self.model = model or os.getenv("OPENROUTER_MODEL")
 
-        cfg: dict[str, Any] = {}
-        project_root_config_path = Path("config.yaml")
-        if project_root_config_path.exists():
-            try:
-                cfg = yaml.safe_load(project_root_config_path.read_text()) or {}
-            except Exception:  # pylint: disable=broad-except
-                cfg = {}
-        else:
-            alt = Path(__file__).resolve().parents[3] / "config.yaml"
-            if alt.exists():
-                try:
-                    cfg = yaml.safe_load(alt.read_text()) or {}
-                except Exception:
-                    cfg = {}
-        llm_cfg = cfg.get("llm", {})
+        cfg = llm_config or CONFIG.llm
 
         self.agent_decision_model = (
-            agent_decision_model or llm_cfg.get("agent_decision_model", self.model)
+            agent_decision_model or cfg.agent_decision_model or self.model
         )
         self.angel_generation_model = (
-            angel_generation_model or llm_cfg.get("angel_generation_model", self.model)
+            angel_generation_model or cfg.angel_generation_model or self.model
         )
 
-        self.mode = self.current_mode()
+        self.mode = self.current_mode(cfg)
         self.is_ready = False # Flag to indicate worker loop is ready
 
         self.offline = self.mode != "live"
@@ -302,36 +289,17 @@ class LLMManager:
     # Helpers
     # ------------------------------------------------------------------
     @classmethod
-    def current_mode(cls) -> str:
+    def current_mode(cls, llm_config: LLMConfig | None = None) -> str:
         """Return the configured LLM mode."""
         env_mode = os.getenv("AW_LLM_MODE")
         if env_mode and env_mode.lower() in cls.MODES:
             return env_mode.lower()
 
-        # Try project root config.yaml first
-        project_root_config_path = Path("config.yaml")
-        if project_root_config_path.exists():
-            try:
-                with open(project_root_config_path, "r", encoding="utf-8") as fh:
-                    cfg = yaml.safe_load(fh) or {}
-                mode_from_cfg = str(cfg.get("llm", {}).get("mode", "offline")).lower()
-                if mode_from_cfg in cls.MODES:
-                    return mode_from_cfg
-            except Exception as e: # pylint: disable=broad-except
-                print(f"Warning: Error reading project root config.yaml: {e}")
-        
-        # Fallback to config.yaml relative to this file's location
-        path = Path(__file__).resolve().parents[3] / "config.yaml"
-        if path.exists():
-            try:
-                with open(path, "r", encoding="utf-8") as fh:
-                    cfg = yaml.safe_load(fh) or {}
-                mode_from_cfg = str(cfg.get("llm", {}).get("mode", "offline")).lower()
-                if mode_from_cfg in cls.MODES:
-                    return mode_from_cfg
-            except Exception as e: # pylint: disable=broad-except
-                print(f"Warning: Error reading parent config.yaml: {e}")
+        cfg = llm_config or CONFIG.llm
+        mode_from_cfg = str(cfg.mode).lower()
+        if mode_from_cfg in cls.MODES:
+            return mode_from_cfg
 
-        return "offline" 
+        return "offline"
 
 __all__ = ["LLMManager"]

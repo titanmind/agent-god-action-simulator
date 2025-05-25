@@ -7,7 +7,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Iterator, List
 
-import yaml
+from agent_world.config import CONFIG
 
 # Event type constants used by various systems
 LLM_REQUEST = "LLM_REQUEST"
@@ -19,17 +19,14 @@ CRAFT = "CRAFT"
 
 
 def _log_retention_bytes() -> int:
-    """Return log rotation threshold in bytes from ``config.yaml``."""
-    path = Path(__file__).resolve().parents[2] / "config.yaml"
+    """Return log rotation threshold in bytes from the :mod:`agent_world.config`."""
     default_mb = 50
-    if path.exists():
-        try:
-            with open(path, "r", encoding="utf-8") as fh:
-                cfg = yaml.safe_load(fh) or {}
-            default_mb = int(cfg.get("cache", {}).get("log_retention_mb", default_mb))
-        except Exception:
-            pass
-    return default_mb * 1024 * 1024
+    cache_cfg = CONFIG.cache or {}
+    try:
+        mb = int(cache_cfg.get("log_retention_mb", default_mb))
+    except Exception:  # pylint: disable=broad-except
+        mb = default_mb
+    return mb * 1024 * 1024
 
 
 def _rotate_log(path: Path) -> None:
