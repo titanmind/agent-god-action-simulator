@@ -19,6 +19,7 @@ class AngelSystem:
 
     def __init__(self, world: Any) -> None:
         self.world = world
+        self.request_queue: list[tuple[int, str]] = []
 
     # ------------------------------------------------------------------
     # Lifecycle stubs
@@ -30,6 +31,11 @@ class AngelSystem:
     def process_pending_requests(self) -> None:
         """Placeholder for processing queued Angel requests."""
         return None
+
+    def queue_request(self, agent_id: int, description: str) -> dict:
+        """Queue an ability generation request and process immediately for now."""
+        self.request_queue.append((agent_id, description))
+        return self.generate_and_grant(agent_id, description)
 
     def _grant_to_agent(self, agent_id: int, class_name: str) -> None:
         cm = getattr(self.world, "component_manager", None)
