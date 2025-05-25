@@ -667,3 +667,313 @@ Outline:
     - Identify any other items in the code that do not align with the design as well, and update them
 
 This Phase 9 aims to significantly improve the codebase's health, align it more closely with the PDD where appropriate at this stage, and prepare it for the more complex feature work required to fully realize the "vFuture" vision.
+
+
+## Phase 10 · True Angel System: LLM-Powered Ability Generation
+
+Implement the core PDD vision for the Angel System where its LLM genuinely generates Python code for novel abilities, moving beyond predefined templates or simple stubs.
+
+### Wave 10-S (stub — merge first)
+
+Task 10-S-1
+Developer @dev-alice
+Files allowed:
+└─ agent_world/ai/angel/system.py
+└─ agent_world/ai/angel/templates.py
+└─ tests/angel/test_angel_prompting_stubs.py
+Outline:
+• Add `_build_angel_code_generation_prompt(description: str, world_constraints: dict, code_scaffolds: dict) -> str` method stub to `AngelSystem`.
+• Add placeholder functions in `agent_world/ai/angel/templates.py` for `get_world_constraints_for_angel()` and `get_code_scaffolds_for_angel()`, returning empty dicts.
+• Test that `_build_angel_code_generation_prompt` can be called with stubbed constraint/scaffold data.
+
+Task 10-S-2
+Developer @dev-bob
+Files allowed:
+└─ agent_world/ai/angel/system.py
+└─ agent_world/utils/sandbox.py
+└─ tests/angel/test_angel_conceptual_test_stub.py
+Outline:
+• Add `_conceptual_test_generated_code(generated_code: str, original_request: str) -> bool` method stub to `AngelSystem`, returning `True`.
+• Ensure `utils/sandbox.py` (especially `run_in_sandbox`) is importable by `AngelSystem` (no functional changes to sandbox itself yet).
+• Test that `_conceptual_test_generated_code` can be called.
+
+### Wave 10-A (parallel once Wave 10-S merged)
+
+Task 10-A-1
+Developer @dev-carol
+Files allowed:
+└─ agent_world/ai/angel/system.py
+└─ agent_world/ai/angel/templates.py
+└─ agent_world/core/world.py (read-only for context)
+└─ tests/angel/test_angel_prompt_building.py
+Outline:
+• Implement `get_world_constraints_for_angel()` in `templates.py` to extract relevant world state (e.g., key component types, existing ability patterns, API limits) for the Angel LLM.
+• Implement `get_code_scaffolds_for_angel()` in `templates.py` to provide basic ability class structure, import statements, and placeholder method signatures.
+• Implement `_build_angel_code_generation_prompt` in `AngelSystem` to construct a detailed prompt for the Angel's LLM using the description, constraints, and scaffolds.
+• Test various scenarios to ensure the prompt includes necessary contextual information.
+
+Task 10-A-2
+Developer @dev-dave
+Files allowed:
+└─ agent_world/ai/angel/system.py
+└─ agent_world/ai/angel/generator.py
+└─ agent_world/ai/llm/llm_manager.py
+└─ tests/angel/test_angel_llm_code_generation.py
+Outline:
+• Modify `AngelSystem.generate_and_grant` (or its new equivalent in `process_pending_requests`):
+    • When no vault match, call `_build_angel_code_generation_prompt`.
+    • Use `world.llm_manager_instance.request` with the `angel_generation_model` to get Python code from the Angel's LLM.
+    • Pass this LLM-generated code string to `angel_generator.generate_ability` via the `stub_code` parameter.
+• Ensure `LLMManager.request` can select the `angel_generation_model` (already supported via config).
+• Test that the Angel System attempts to use its LLM for code generation and that `generate_ability` receives the code. Mock LLM to return a simple valid ability string.
+
+### Wave 10-B (serial follow-up)
+
+Task 10-B-1
+Developer @dev-ellen
+Files allowed:
+└─ agent_world/ai/angel/system.py
+└─ agent_world/utils/sandbox.py (if needed for advanced conceptual testing later, but primarily for reasoning prompt)
+└─ tests/angel/test_angel_conceptual_testing_flow.py
+Outline:
+• Implement the *first part* of "Conceptual Sandboxed Testing" in `AngelSystem`.
+• After receiving code from the Angel LLM, before writing the file, call `_conceptual_test_generated_code`.
+• For this task, `_conceptual_test_generated_code` will prompt the *same* Angel LLM (or a dedicated one if easily swappable) with the generated code and the original request, asking it to "reason about potential issues, API misuse, or if it meets the functional goal" without actually executing it in the sandbox.
+• If the LLM's reasoning output indicates high confidence/no issues, proceed to grant. If issues, log them and potentially return failure (or attempt a修正 prompt).
+• `utils/sandbox.py::run_in_sandbox` is NOT used to execute the ability code itself here.
+• Test the flow: ability description -> LLM code gen -> LLM conceptual reasoning -> grant/fail. Mock LLM reasoning responses.
+
+## Phase 11 · Generalized AI & Emergent Behavior Foundations
+
+Decouple AI decision-making from hardcoded scenarios and build foundational capabilities for agents to pursue goals more emergently.
+
+### Wave 11-S (stub — merge first)
+
+Task 11-S-1
+Developer @dev-frank
+Files allowed:
+└─ agent_world/core/components/ai_state.py
+└─ agent_world/ai/planning/__init__.py
+└─ agent_world/ai/planning/base_planner.py
+└─ tests/ai/planning/test_planner_stubs.py
+Outline:
+• Enhance `AIStateComponent` to include richer goal representation (e.g., `goals: list[GoalObject]` where `GoalObject` might have type, target, conditions) and a `current_plan: list[ActionStep]` field.
+• Create `agent_world/ai/planning/` directory and `__init__.py`.
+• Create `agent_world/ai/planning/base_planner.py` with an abstract `BasePlanner` class having a `create_plan(agent_id: int, goals: list[GoalObject], world: Any) -> list[ActionStep]` method.
+
+### Wave 11-A (parallel once Wave 11-S merged)
+
+Task 11-A-1
+Developer @dev-grace
+Files allowed:
+└─ agent_world/ai/llm/prompt_builder.py
+└─ tests/ai/test_generalized_prompting_phase11.py
+Outline:
+• Completely refactor `agent_world/ai/llm/prompt_builder.build_prompt` (the non-critical one) to remove all remaining scenario-specific "CRITICAL SITUATION" / "DefaultPickupScenario" logic.
+• The prompt should now be built based on the agent's generalized `AIState` (including new goal representation), perception cache, known abilities, and role, without hardcoded advice for specific scenarios.
+• Focus on providing the LLM with raw, relevant information for general decision-making.
+• Test that prompts are generated based on various AIStates and world conditions without specific scenario triggers.
+
+Task 11-A-2
+Developer @dev-heidi
+Files allowed:
+└─ agent_world/ai/planning/llm_planner.py
+└─ agent_world/systems/ai/ai_reasoning_system.py
+└─ tests/ai/planning/test_llm_planner.py
+Outline:
+• Implement `LLMPlanner(BasePlanner)` in `agent_world/ai/planning/llm_planner.py`.
+• Its `create_plan` method will use the LLM (agent_decision_model) to break down high-level `AIState.goals` into a sequence of `ActionStep`s (which could be game actions or sub-goals).
+• Modify `AIReasoningSystem` to:
+    • If an agent has goals but no `current_plan`, invoke the `LLMPlanner` to generate one and store it in `AIState`.
+    • If a plan exists, use the next step in the plan to guide the LLM prompt for the *specific action* for that step, or directly convert `ActionStep` to an `Action` if possible.
+• Test that the `LLMPlanner` can generate a plan from goals and `AIReasoningSystem` attempts to follow it.
+
+Task 11-A-3
+Developer @dev-ivan
+Files allowed:
+└─ agent_world/ai/behaviors/
+└─ tests/ai/test_expanded_behavior_trees.py
+Outline:
+• Expand the Behavior Tree library (`agent_world/ai/behaviors/`) with more sophisticated generic fallback nodes/trees.
+• Examples: BT for resource gathering (find resource, move to it, "harvest" action), BT for fleeing if low health, BT for basic item interaction.
+• These BTs should be usable by `BehaviorTreeSystem` for agents not using LLMs or when LLM/planning fails.
+• Test new BT functionalities.
+
+## Phase 12 · Deepening Gameplay Systems & Agent Interaction
+
+Integrate AI decision-making more deeply into existing gameplay systems, allowing agents to intelligently interact with the world and each other.
+
+### Wave 12-A (parallel)
+
+Task 12-A-1
+Developer @dev-alice
+Files allowed:
+└─ agent_world/systems/interaction/trading.py
+└─ agent_world/ai/llm/prompt_builder.py (for exposing trade info)
+└─ agent_world/core/components/ai_state.py (if goals need trade-specific extensions)
+└─ tests/systems/interaction/test_ai_trading.py
+Outline:
+• Enhance `TradingSystem` to support offers, counter-offers, or at least valuation-based decisions using `get_local_prices`.
+• Agents (via `AIReasoningSystem` + `LLMPlanner` or specialized BTs) should be able to form goals like "acquire X by trading Y."
+• Expose local prices and potential trade partners/inventory to agent prompts.
+• Test a scenario where an agent decides to trade based on its goals and perceived market conditions.
+
+Task 12-A-2
+Developer @dev-bob
+Files allowed:
+└─ agent_world/systems/interaction/crafting.py
+└─ agent_world/ai/llm/prompt_builder.py (for exposing recipe/inventory info)
+└─ agent_world/core/components/ai_state.py (if goals need craft-specific extensions)
+└─ agent_world/data/recipes.json (expand with more complex recipes)
+└─ tests/systems/interaction/test_ai_crafting.py
+Outline:
+• Expand `recipes.json` with a few more complex recipes.
+• Agents need to be able to "learn" or be granted knowledge of recipes (e.g., add `known_recipes: list[str]` to `AIState` or a new component).
+• Agents (via `AIReasoningSystem` + `LLMPlanner` or specialized BTs) should decide to craft items based on goals, known recipes, and available inventory.
+• Expose known recipes and inventory to agent prompts.
+• Test a scenario where an agent gathers resources and crafts an item to fulfill a goal.
+
+Task 12-A-3
+Developer @dev-carol
+Files allowed:
+└─ agent_world/systems/combat/combat_system.py
+└─ agent_world/systems/combat/damage_types.py
+└─ agent_world/systems/combat/defense.py
+└─ agent_world/ai/llm/prompt_builder.py (for exposing combat info)
+└─ agent_world/ai/behaviors/combat_bt.py (new)
+└─ tests/systems/combat/test_ai_combat.py
+Outline:
+• Add 1-2 new `DamageType`s (e.g., `FIRE`, `MAGIC`) and update `Defense` component to handle them.
+• Create `agent_world/ai/behaviors/combat_bt.py` with a more sophisticated behavior tree for combat (e.g., choose target, use appropriate ability, consider retreating if low health).
+• Agents (LLM-driven or BT-driven) should make tactical combat decisions, potentially choosing abilities from `KnownAbilitiesComponent`.
+• Expose relevant combat information (target health, own health, nearby threats) to prompts.
+• Test scenarios with different combat situations and agent responses.
+
+Task 12-A-4
+Developer @dev-dave
+Files allowed:
+└─ agent_world/data/roles.yaml
+└─ agent_world/utils/cli/commands.py (spawn command if needs updates for new role features)
+└─ agent_world/systems/ai/ai_reasoning_system.py (if role-specific plan generation is needed)
+└─ tests/ai/test_richer_npc_roles.py
+Outline:
+• Define 2-3 new NPC roles in `roles.yaml` with distinct `fixed_abilities`, `can_request_abilities`, and `uses_llm` settings.
+• These roles should leverage the improved AI/planning and gameplay systems (e.g., a "Trader" role that prioritizes trading goals, a "Crafter" role).
+• Ensure the AI systems (`AIReasoningSystem`, `BehaviorTreeSystem`) can differentiate behaviors or default plans based on these richer roles.
+• Test that NPCs with new roles exhibit distinct behaviors.
+
+## Phase 13 · Full Procedural Generation & World Richness
+
+Fully realize the "procedural everything" philosophy, particularly for items and potentially more complex map features.
+
+### Wave 13-A (parallel)
+
+Task 13-A-1
+Developer @dev-ellen
+Files allowed:
+└─ agent_world/core/components/item.py (new)
+└─ agent_world/systems/interaction/pickup.py
+└─ agent_world/systems/interaction/crafting.py
+└─ agent_world/utils/asset_generation/item_generator.py (new)
+└─ agent_world/utils/cli/commands.py (for spawning proc-gen items)
+└─ tests/procedural_generation/test_item_generation.py
+Outline:
+• Create `ItemComponent` dataclass to hold properties (e.g., name, description, effects, value, type) for items.
+• Create `item_generator.py` to procedurally generate `ItemComponent` instances with varied properties.
+• Modify `PickupSystem` and `CraftingSystem` to work with `ItemComponent` instead of just entity IDs for items.
+• Update `spawn` CLI command: `/spawn item [type]` could now use the item generator.
+• Test procedural item generation and its integration with inventory/crafting.
+
+Task 13-A-2
+Developer @dev-frank
+Files allowed:
+└─ agent_world/core/world.py (resource/map generation)
+└─ agent_world/utils/asset_generation/map_features.py (new)
+└─ tests/procedural_generation/test_map_features.py
+Outline:
+• Create `map_features.py` to define procedures for generating more complex map features (e.g., small structures, varied resource clusters, named locations).
+• Enhance `World.generate_resources` or add a new `World.generate_map_features` method to incorporate these.
+• These features should be deterministic and potentially influence agent behavior (e.g., a "ruin" might contain rare items).
+• Test generation of new map features.
+
+## Phase 14 · Advanced Observability, Replay, & CLI
+
+Enhance tools for observing, debugging, and interacting with the simulation to support the analysis of emergent behavior.
+
+### Wave 14-A (parallel)
+
+Task 14-A-1
+Developer @dev-grace
+Files allowed:
+└─ agent_world/persistence/replay.py
+└─ agent_world/persistence/event_log.py (if new event types needed for replay)
+└─ tests/persistence/test_advanced_replay.py
+Outline:
+• Enhance `replay.py` to robustly handle all logged event types from the persistent event log, including LLM I/O and Angel actions.
+• Develop more comprehensive replay tests that verify complex sequences of events leading to specific world states or agent decisions.
+• Ensure that replaying a logged scenario results in a deterministic outcome matching the original run as closely as possible (given LLM stochasticity, focus on replaying decisions and actions).
+
+Task 14-A-2
+Developer @dev-heidi
+Files allowed:
+└─ agent_world/utils/cli/commands.py
+└─ agent_world/ai/angel/system.py (for manual trigger integration)
+└─ tests/cli/test_advanced_cli_commands.py
+Outline:
+• Add new CLI commands:
+    • `/angel trigger <agent_id> "<description>"` to manually trigger an Angel System request for a specific agent and description.
+    • `/agent inspect <agent_id> <memory|goals|plan>` to view detailed internal states of an agent.
+    • `/world set_state <key> <value>` (e.g., `/world set_state time_scale 2.0`) for basic world state manipulation (add `time_scale` to `TimeManager` if implementing).
+• Test these new CLI commands thoroughly.
+
+Task 14-A-3
+Developer @dev-ivan
+Files allowed:
+└─ agent_world/gui/renderer.py
+└─ agent_world/gui/input.py
+└─ tests/gui/test_debug_overlays.py
+Outline:
+• Enhance the GUI `Renderer` to display more debug information as overlays.
+• Examples: agent goals, current action/plan, visual representation of perception radius, paths being considered.
+• Add keybindings in `gui/input.py` to toggle these debug overlays.
+• Test that overlays can be toggled and display correct information.
+
+## Phase 15 · Polish, Balancing, & Final PDD Alignment
+
+Refine all systems, balance gameplay interactions, ensure all aspects align with the final PDD vision, and perform extensive testing for stability and emergent behavior.
+
+### Wave 15-A (Iterative & Parallel)
+
+Task 15-A-1 (Ongoing)
+Developer @dev-alice
+Files allowed:
+└─ Various config files (roles.yaml, recipes.json)
+└─ Various system files (combat, trading, crafting, ability costs)
+└─ tests/integration/test_balance_and_emergence.py
+Outline:
+• Iteratively balance ability costs, cooldowns, item values, crafting recipe difficulty, combat parameters.
+• Create complex, long-running integration tests designed to observe and validate emergent behaviors (e.g., can an agent identify a need, request/craft a tool/ability, and then use it to achieve a multi-step goal?).
+• Log metrics related to game economy, agent survival, goal completion rates.
+
+Task 15-A-2
+Developer @dev-bob
+Files allowed:
+└─ Entire codebase
+└─ tests/ (adding performance tests)
+Outline:
+• Conduct performance profiling across the application.
+• Identify and optimize bottlenecks in critical systems (e.g., spatial index, rendering, frequent component access).
+• Ensure the simulation runs smoothly with a target number of entities and maintains the soft tick budget.
+
+Task 15-A-3 (Final Review)
+Developer @dev-carol
+Files allowed:
+└─ PROJECT_DESIGN.md
+└─ README.md
+└─ Entire codebase (for documentation and final checks)
+Outline:
+• Perform a final review of the `PROJECT_DESIGN.md` to ensure it accurately reflects the completed project state.
+• Update `README.md` with final usage instructions, features, and project summary.
+• Add/update comments and docstrings throughout the codebase.
+• Address any remaining minor bugs, inconsistencies, or TODOs identified during balancing and testing.
+• Ensure test coverage remains high (≥95%).
