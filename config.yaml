@@ -6,8 +6,8 @@ world:
 
 llm:
   mode: offline
-  agent_decision_model: "default/model"
-  angel_generation_model: "default/model"
+  agent_decision_model: "google/gemini-flash-1.5-8b"
+  angel_generation_model: "google/gemini-flash-1.5-8b"
 
 # paths:
 #   abilities_vault: "./agent_world/abilities/vault"
