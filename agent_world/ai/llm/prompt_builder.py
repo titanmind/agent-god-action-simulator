@@ -1,5 +1,4 @@
-
-# agent-god-action-simulator/agent_world/ai/llm/prompt_builder.py
+# agent_world/ai/llm/prompt_builder.py
 """Utilities for constructing deterministic LLM prompts."""
 
 from __future__ import annotations
@@ -68,7 +67,7 @@ def _normalize(obj: Any) -> Any:
 
 
 def build_prompt(agent_id: int, world: World, *, memory_k: int = 5) -> str: 
-    global _VISITED_OBJECTS_DURING_NORMALIZE # Ensure global is used
+    global _VISITED_OBJECTS_DURING_NORMALIZE 
     _VISITED_OBJECTS_DURING_NORMALIZE = set() 
 
     em = world.entity_manager; cm = world.component_manager; tm = world.time_manager
@@ -80,14 +79,12 @@ def build_prompt(agent_id: int, world: World, *, memory_k: int = 5) -> str:
     agent_inventory: Optional[Inventory] = cm.get_component(agent_id, Inventory)
     perception_cache = cm.get_component(agent_id, PerceptionCache)
 
-    # +++ DEBUG BLOCK for Agent 2 Goals +++
     if agent_id == 2 and tm:
         logger.debug("DEBUG AGENT 2 in build_prompt (Tick %s)", tm.tick_counter)
         if agent_ai_state:
             logger.debug("Agent 2 AIState object ID: %s, Goals RAW: %s", id(agent_ai_state), agent_ai_state.goals)
         else:
             logger.debug("Agent 2 AIState is None in build_prompt")
-    # +++ END DEBUG BLOCK +++
 
     current_pos_str = f"({agent_pos.x}, {agent_pos.y})" if agent_pos else "Unknown"
     
@@ -116,8 +113,6 @@ def build_prompt(agent_id: int, world: World, *, memory_k: int = 5) -> str:
     role_comp = cm.get_component(agent_id, RoleComponent)
     can_request_abilities = role_comp.can_request_abilities if role_comp else True
 
-
-    # --- If not a critical situation, build the standard prompt ---
     agent_specific_world_data = {} 
     agent_specific_world_data["world_info"] = {
         "size": f"{world_width}x{world_height} (X:0-{world_width-1}, Y:0-{world_height-1})",
@@ -163,11 +158,13 @@ def build_prompt(agent_id: int, world: World, *, memory_k: int = 5) -> str:
         mem_section = f"\n\nRecent Memories:\n{mem_json}"
 
     my_personality = agent_ai_state.personality if agent_ai_state else "default"
-    last_bt_move_failed_status = agent_ai_state.last_bt_move_failed if agent_ai_state else False
+    # FIX: Use the renamed attribute 'last_action_failed_to_achieve_effect'
+    last_action_failed_status = agent_ai_state.last_action_failed_to_achieve_effect if agent_ai_state else False
     
     dynamic_advice_lines = []
-    if last_bt_move_failed_status and my_goals_list and can_request_abilities:
-        dynamic_advice_lines.append("Your last automatic movement was blocked. If an obstacle hinders your goals, consider `GENERATE_ABILITY`.")
+    # FIX: Use the renamed attribute
+    if last_action_failed_status and my_goals_list and can_request_abilities:
+        dynamic_advice_lines.append("Your last action did not achieve its intended effect (e.g. movement blocked). If an obstacle hinders your goals, consider `GENERATE_ABILITY`.")
     if my_known_abilities_str != "None":
         dynamic_advice_lines.append("Review your 'known abilities'. Can any help achieve goals or overcome obstacles?")
     
@@ -178,13 +175,18 @@ def build_prompt(agent_id: int, world: World, *, memory_k: int = 5) -> str:
 
     obstacle_note = ""
     if agent_ai_state and my_goals_list and agent_pos:
-        # Skip if executing a dedicated DEAL_WITH_OBSTACLE step
         executing_obstacle_step = False
         if agent_ai_state.current_plan:
             first_step = agent_ai_state.current_plan[0]
-            if first_step.step_type == "DEAL_WITH_OBSTACLE":
+            # Check if the current LLM request is for this specific obstacle step
+            step_action_key_for_pending_llm = f"{first_step.action}_{id(first_step)}"
+            if (agent_ai_state.pending_llm_prompt_id is not None and
+                agent_ai_state.pending_llm_for_plan_step_action == step_action_key_for_pending_llm and
+                (first_step.step_type == "deal_with_obstacle" or 
+                 (first_step.action and first_step.action.upper() == "DEAL_WITH_OBSTACLE"))):
                 executing_obstacle_step = True
-        if not executing_obstacle_step:
+        
+        if not executing_obstacle_step: # Only add general obstacle note if not actively dealing with one via LLM
             goal = my_goals_list[0]
             target = getattr(goal, "target", None)
             target_coords = None
@@ -197,17 +199,14 @@ def build_prompt(agent_id: int, world: World, *, memory_k: int = 5) -> str:
             if target_coords:
                 dx = target_coords[0] - agent_pos.x
                 dy = target_coords[1] - agent_pos.y
-                candidate_steps = []
-                if dx != 0:
-                    candidate_steps.append((agent_pos.x + (1 if dx > 0 else -1), agent_pos.y))
-                if dy != 0:
-                    candidate_steps.append((agent_pos.x, agent_pos.y + (1 if dy > 0 else -1)))
-                obstacle_at = None
-                for step in candidate_steps:
-                    if step in pathfinding.OBSTACLES:
-                        obstacle_at = step
-                        break
-                if obstacle_at:
+                # Check immediate step towards target
+                next_step_x, next_step_y = agent_pos.x, agent_pos.y
+                if abs(dx) > abs(dy): next_step_x += (1 if dx > 0 else -1)
+                elif dy != 0: next_step_y += (1 if dy > 0 else -1)
+                
+                if (next_step_x, next_step_y) != (agent_pos.x, agent_pos.y) and \
+                   pathfinding.is_blocked((next_step_x, next_step_y)):
+                    obstacle_at = (next_step_x, next_step_y)
                     target_display = target if isinstance(target, int) else target_coords
                     obstacle_note = (
                         f"SYSTEM NOTE: Your direct path to current goal target {target_display} "
@@ -228,7 +227,7 @@ def build_prompt(agent_id: int, world: World, *, memory_k: int = 5) -> str:
     ]
     if can_request_abilities:
         base_lines.append('If you need a new skill for your goals or to overcome an obstacle, use "GENERATE_ABILITY <description>".')
-    base_lines.append('After an ability is generated (it will appear in \"Abilities You Know\" next turn), you can use "USE_ABILITY <AbilityClassName>".')
+    base_lines.append('After an ability is generated (it will appear in \"Abilities You Know\" next turn), you can use "USE_ABILITY <AbilityClassName> [target_id]".')
     base_lines.append('Formulate a plan or a single action. If you plan multiple steps, use LOG for the plan then take the first step.')
     base_instructions = "\n".join(base_lines)
 
@@ -242,29 +241,38 @@ def build_prompt(agent_id: int, world: World, *, memory_k: int = 5) -> str:
     if can_request_abilities:
         action_lines.append('- "GENERATE_ABILITY <description>" (e.g., "GENERATE_ABILITY create healing potion")')
     action_lines.extend([
-        '- "USE_ABILITY <AbilityClassName> [target_id]" (e.g., "USE_ABILITY MeleeStrike 15")',
+        '- "USE_ABILITY <AbilityClassName> [target_id]" (e.g., "USE_ABILITY MeleeStrike 15" or "USE_ABILITY SampleFireball 15")',
         '- "PICKUP <item_id>" (e.g., "PICKUP 4")',
     ])
     action_list_text = "\n".join(action_lines)
 
     focus_lines = ["--- FOCUS FOR THIS TURN ---", f"YOUR CURRENT GOALS: {my_goals_str}"]
-    if can_request_abilities:
+    if can_request_abilities: # Only show known abilities if they *can* request/use them
         focus_lines.append(f"ABILITIES YOU KNOW: {my_known_abilities_str}")
     if dynamic_advice_section:
         focus_lines.append(dynamic_advice_section)
     focus_lines.append("--- END FOCUS ---")
     focus_section = "\n".join(focus_lines)
 
-    prompt = f"""{base_instructions}
---- Current World State for Agent {agent_id} (Tick: {tm.tick_counter if tm else 'N/A'}) ---
-{serialized_view}
-{mem_section}
-
-{focus_section}
-{action_list_text}
-Based on your GOALS and current situation, what is Your Action:"""
+    prompt_parts = []
+    if agent_ai_state and agent_ai_state.last_error: # Prepend system note about previous error
+        prompt_parts.append(f"SYSTEM NOTE (from previous turn): {agent_ai_state.last_error}")
+    
     if obstacle_note:
-        prompt = f"{obstacle_note}\n\n{prompt}"
+        prompt_parts.append(obstacle_note)
+
+    prompt_parts.extend([
+        base_instructions,
+        f"--- Current World State for Agent {agent_id} (Tick: {tm.tick_counter if tm else 'N/A'}) ---",
+        serialized_view,
+        mem_section,
+        "", # Blank line for separation
+        focus_section,
+        action_list_text,
+        "Based on your GOALS and current situation, what is Your Action:"
+    ])
+    prompt = "\n".join(filter(None, prompt_parts)) # Join non-empty parts
+
     current_tick_for_log = tm.tick_counter if tm else "N/A"
     logger.debug(
         "\n--- [PromptBuilder Agent %s Tick %s] FULL STANDARD PROMPT SENT ---\n%s\n--- END FULL STANDARD PROMPT ---\n",
