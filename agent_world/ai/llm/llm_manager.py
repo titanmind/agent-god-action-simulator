@@ -87,7 +87,7 @@ class LLMManager:
 
 
         self.cache = LLMCache(capacity=cache_size)
-        self.queue: asyncio.Queue[Tuple[str, asyncio.Future[str], str]] = (
+        self.queue: asyncio.Queue[Tuple[str, asyncio.Future[str], str, str | None]] = (
             asyncio.Queue(maxsize=queue_max)
         )
         self.loop: asyncio.AbstractEventLoop | None = None
@@ -98,11 +98,18 @@ class LLMManager:
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
-    def _add_future_and_queue_request(self, prompt: str, fut: asyncio.Future[str], prompt_id: str, world: Any):
+    def _add_future_and_queue_request(
+        self,
+        prompt: str,
+        fut: asyncio.Future[str],
+        prompt_id: str,
+        world: Any,
+        model: str | None,
+    ):
         # This method is executed by call_soon_threadsafe IN THE WORKER THREAD'S LOOP
         world.async_llm_responses[prompt_id] = fut
         try:
-            self.queue.put_nowait((prompt, fut, prompt_id))
+            self.queue.put_nowait((prompt, fut, prompt_id, model))
             logger.debug(
                 "[LLMManager] Queued prompt_id %s in _add_future_and_queue_request",
                 prompt_id,
@@ -115,7 +122,12 @@ class LLMManager:
                 fut.set_result("<error_llm_queue_full>")
 
     def request(
-        self, prompt: str, world: Any | None = None, timeout: float | None = None
+        self,
+        prompt: str,
+        world: Any | None = None,
+        *,
+        timeout: float | None = None,
+        model: str | None = None,
     ) -> str:
         """Return response prompt_id or result depending on mode."""
 
@@ -159,14 +171,24 @@ class LLMManager:
         prompt_id = uuid.uuid4().hex
         
         self.loop.call_soon_threadsafe(
-            self._add_future_and_queue_request, prompt, fut, prompt_id, world
+            self._add_future_and_queue_request,
+            prompt,
+            fut,
+            prompt_id,
+            world,
+            model or self.model,
         )
         return prompt_id
 
 
     async def process_queue_item(self) -> None:
         """Handle a single queued prompt and populate the cache."""
-        prompt, fut, prompt_id = await self.queue.get()
+        item = await self.queue.get()
+        if len(item) == 4:
+            prompt, fut, prompt_id, model = item
+        else:
+            prompt, fut, prompt_id = item
+            model = self.model
         logger.debug(
             "[LLMManager] Processing prompt_id %s from queue in process_queue_item",
             prompt_id,
@@ -197,7 +219,7 @@ class LLMManager:
                 "Content-Type": "application/json",
             }
             payload = {
-                "model": self.model,
+                "model": model,
                 "messages": [{"role": "user", "content": prompt}],
             }
             
