@@ -15,6 +15,8 @@ from ...ai.llm.prompt_builder import build_prompt
 from ...ai.llm.llm_manager import LLMManager
 from ...core.components.role import RoleComponent
 from ...ai.planning.llm_planner import LLMPlanner
+from ...core.components.position import Position
+from ...systems.movement import pathfinding
 from .behavior_tree import BehaviorTree, build_fallback_tree
 from .actions import parse_action_string, ActionQueue
 
@@ -62,6 +64,91 @@ class AIReasoningSystem:
         self.planner = planner or LLMPlanner(llm)
         self.action_queue: ActionQueue | None = getattr(world, "action_queue", None)
         self._sink_wrapped = isinstance(action_tuples_list, RawActionCollector)
+
+    @staticmethod
+    def _first_obstacle_in_direct_path(start: Tuple[int, int], goal: Tuple[int, int]) -> Tuple[int, int] | None:
+        """Return the first blocking obstacle when moving directly from start to goal."""
+        x, y = start
+        gx, gy = goal
+        while x != gx:
+            x += 1 if gx > x else -1
+            if pathfinding.is_blocked((x, y)):
+                return (x, y)
+        while y != gy:
+            y += 1 if gy > y else -1
+            if pathfinding.is_blocked((x, y)):
+                return (x, y)
+        return None
+
+    def _contextualize_generate_ability(self, action_text: str, ai_comp: AIState, entity_id: int) -> str:
+        """Ensure GENERATE_ABILITY descriptions mention relevant obstacle context."""
+        if not action_text.upper().startswith("GENERATE_ABILITY"):
+            return action_text
+
+        parts = action_text.split(maxsplit=1)
+        if len(parts) < 2:
+            return action_text
+
+        desc = parts[1]
+        if re.search(r"\(\s*\d+\s*,\s*\d+\s*\)", desc):
+            return action_text  # Already contextualized with coords
+
+        cm = self.world.component_manager
+        obs = None
+        dest = None
+
+        if ai_comp.current_plan:
+            step = ai_comp.current_plan[0]
+            step_type = (step.step_type or step.action).upper()
+            if step_type in {"DEAL_WITH_OBSTACLE", "GENERATE_ABILITY_FOR_OBSTACLE"}:
+                obs = step.parameters.get("obstacle") or step.parameters.get("coords")
+                dest = step.parameters.get("goal") or step.target
+
+        if obs is None or dest is None:
+            agent_pos = cm.get_component(entity_id, Position)
+            if ai_comp.goals and agent_pos:
+                goal = ai_comp.goals[0]
+                target = getattr(goal, "target", None)
+                target_coords = None
+                if isinstance(target, int):
+                    t_pos = cm.get_component(target, Position)
+                    if t_pos:
+                        target_coords = (t_pos.x, t_pos.y)
+                elif isinstance(target, (tuple, list)) and len(target) == 2:
+                    target_coords = (int(target[0]), int(target[1]))
+
+                if target_coords:
+                    if dest is None:
+                        dest = target_coords
+                    if obs is None:
+                        obs = self._first_obstacle_in_direct_path(
+                            (agent_pos.x, agent_pos.y), target_coords
+                        )
+
+        if obs is not None:
+            if isinstance(obs, tuple):
+                obs_str = f"({obs[0]},{obs[1]})"
+            else:
+                obs_str = str(obs)
+
+            dest_str = None
+            if dest is not None:
+                if isinstance(dest, tuple):
+                    dest_str = f"({dest[0]},{dest[1]})"
+                elif isinstance(dest, int):
+                    d_pos = cm.get_component(dest, Position)
+                    dest_str = f"({d_pos.x},{d_pos.y})" if d_pos else str(dest)
+                else:
+                    dest_str = str(dest)
+
+            if obs_str not in desc:
+                if dest_str:
+                    desc = f"{desc} at {obs_str} blocking path to {dest_str}"
+                else:
+                    desc = f"{desc} at {obs_str}"
+                return f"GENERATE_ABILITY {desc}"
+
+        return action_text
 
     def update(self, tick: int) -> None: # tick parameter is passed by SystemsManager
         """Handle pending and new LLM prompts for all agents."""
@@ -145,6 +232,8 @@ class AIReasoningSystem:
                     part = step.parameters.get("arg")
                     if part is not None:
                         final_action_to_take = f"{step.action} {part}".strip()
+                    elif step.action.upper() == "GENERATE_ABILITY" and step.parameters.get("description"):
+                        final_action_to_take = f"GENERATE_ABILITY {step.parameters['description']}"
                     elif step.target is not None:
                         final_action_to_take = f"{step.action} {step.target}".strip()
                     else:
@@ -280,6 +369,10 @@ class AIReasoningSystem:
                     final_action_to_take = fallback_action
             
             if final_action_to_take:
+                if final_action_to_take.upper().startswith("GENERATE_ABILITY"):
+                    final_action_to_take = self._contextualize_generate_ability(
+                        final_action_to_take, ai_comp, entity_id
+                    )
                 logger.info(
                     "[Tick %s][AI Agent %s] Decided action: '%s' (LLM Mode: %s)",
                     tm.tick_counter,
