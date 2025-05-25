@@ -20,6 +20,17 @@ class AngelSystem:
     def __init__(self, world: Any) -> None:
         self.world = world
 
+    # ------------------------------------------------------------------
+    # Lifecycle stubs
+    # ------------------------------------------------------------------
+    def update(self, world: Any, tick: int) -> None:
+        """Placeholder system update method."""
+        return None
+
+    def process_pending_requests(self) -> None:
+        """Placeholder for processing queued Angel requests."""
+        return None
+
     def _grant_to_agent(self, agent_id: int, class_name: str) -> None:
         cm = getattr(self.world, "component_manager", None)
         if cm is None:
