@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any, Dict, Iterable, TYPE_CHECKING
+import logging
 
 from ...core.components.position import Position
 from ...core.components.health import Health
@@ -18,6 +19,8 @@ from ...core.components.role import RoleComponent
 from ...core.components.known_abilities import KnownAbilitiesComponent
 import yaml
 
+logger = logging.getLogger(__name__)
+
 from ...persistence.save_load import save_world
 from ..observer import install_tick_observer, toggle_live_fps, print_fps as observer_print_fps
 
@@ -28,7 +31,7 @@ try:
     from ..profiling import profile_ticks
 except ImportError:
     def profile_ticks(n: int, tick_callback: Any, out_path: Any) -> None:
-        print(f"Profiling (stub): {n} ticks, output to {out_path}")
+        logger.info("Profiling (stub): %s ticks, output to %s", n, out_path)
         pass
 
 
@@ -49,7 +52,7 @@ def _load_roles() -> Dict[str, Dict[str, Any]]:
         if not isinstance(data, dict):
             data = {}
     except Exception as e:  # pragma: no cover - defensive
-        print(f"Error loading roles file: {e}")
+        logger.error("Error loading roles file: %s", e)
         data = {}
     _ROLE_CACHE = {str(k): v for k, v in data.items() if isinstance(v, dict)}
     return _ROLE_CACHE
@@ -57,30 +60,30 @@ def _load_roles() -> Dict[str, Dict[str, Any]]:
 
 def pause(state: Dict[str, Any]) -> None:
     state["paused"] = True
-    print("Simulation paused.")
+    logger.info("Simulation paused.")
 
 
 def step(state: Dict[str, Any]) -> None:
     if state.get("paused", False):
         state["step"] = True
-        print("Stepping one tick.")
+        logger.info("Stepping one tick.")
     else:
-        print("Simulation is not paused. Use /pause first.")
+        logger.info("Simulation is not paused. Use /pause first.")
 
 
 def save(world: Any, path: str | Path | None = None) -> None:
     save_path = Path(path) if path is not None else DEFAULT_SAVE_PATH
     try:
         save_world(world, save_path)
-        print(f"World saved to {save_path}")
+        logger.info("World saved to %s", save_path)
     except Exception as e:
-        print(f"Error saving world: {e}")
+        logger.error("Error saving world: %s", e)
 
 
 def reload_abilities(world: Any) -> None:
     sm: Iterable[Any] | None = getattr(world, "systems_manager", None)
     if sm is None:
-        print("SystemsManager not found in world.")
+        logger.error("SystemsManager not found in world.")
         return
     reloaded_count = 0
     for system in sm:
@@ -91,22 +94,28 @@ def reload_abilities(world: Any) -> None:
                     load_all_method()
                     reloaded_count +=1
                 except Exception as e:
-                    print(f"Error reloading abilities in system {type(system).__name__}: {e}")
-    if reloaded_count > 0: print(f"Abilities reloaded for {reloaded_count} system(s).")
-    else: print("No ability systems found or reloaded.")
+                    logger.error(
+                        "Error reloading abilities in system %s: %s",
+                        type(system).__name__,
+                        e,
+                    )
+    if reloaded_count > 0:
+        logger.info("Abilities reloaded for %s system(s).", reloaded_count)
+    else:
+        logger.info("No ability systems found or reloaded.")
 
 
 def profile(world: Any, ticks_str: str | None = None) -> None:
     try:
         num_ticks = int(ticks_str) if ticks_str else 100
-        if num_ticks <=0:
-            print("Number of ticks must be positive.")
+        if num_ticks <= 0:
+            logger.info("Number of ticks must be positive.")
             return
     except ValueError:
-        print(f"Invalid number of ticks: {ticks_str}")
+        logger.error("Invalid number of ticks: %s", ticks_str)
         return
     out_path = Path("profile.prof")
-    print(f"Starting profiling for {num_ticks} ticks. Output to {out_path}")
+    logger.info("Starting profiling for %s ticks. Output to %s", num_ticks, out_path)
     tm = getattr(world, "time_manager")
     sm = getattr(world, "systems_manager")
     aq = getattr(world, "action_queue")
@@ -119,13 +128,13 @@ def profile(world: Any, ticks_str: str | None = None) -> None:
             sm.update(world, tm.tick_counter)
             tm.tick_counter += 1
     if not (tm and sm and aq is not None and raw_aq is not None):
-        print("World components missing for profiling callback setup.")
+        logger.error("World components missing for profiling callback setup.")
         return
     try:
         profile_ticks(num_ticks, single_world_tick_for_profiling, out_path)
-        print(f"Profiling complete. Stats saved to {out_path}")
+        logger.info("Profiling complete. Stats saved to %s", out_path)
     except Exception as e:
-        print(f"Error during profiling: {e}")
+        logger.error("Error during profiling: %s", e)
 
 
 def spawn(world: Any, kind: str, x_str: str | None = None, y_str: str | None = None) -> int | None:
@@ -133,7 +142,7 @@ def spawn(world: Any, kind: str, x_str: str | None = None, y_str: str | None = N
     cm = getattr(world, "component_manager", None)
     spatial_index = getattr(world, "spatial_index", None)
     if em is None or cm is None or spatial_index is None:
-        print("World managers not initialized for spawn.")
+        logger.error("World managers not initialized for spawn.")
         return None
 
     role_name: str | None = None
@@ -151,7 +160,13 @@ def spawn(world: Any, kind: str, x_str: str | None = None, y_str: str | None = N
         x = int(x_str) if x_str and x_str.lstrip('-').isdigit() else default_x
         y = int(y_str) if y_str and y_str.lstrip('-').isdigit() else default_y
     except ValueError:
-        print(f"Invalid coordinates for spawn ('{x_str}', '{y_str}'). Using defaults ({default_x},{default_y}).")
+        logger.error(
+            "Invalid coordinates for spawn ('%s', '%s'). Using defaults (%s,%s).",
+            x_str,
+            y_str,
+            default_x,
+            default_y,
+        )
         x = default_x
         y = default_y
 
@@ -178,14 +193,19 @@ def spawn(world: Any, kind: str, x_str: str | None = None, y_str: str | None = N
                 if role_comp.fixed_abilities:
                     cm.add_component(ent_id, KnownAbilitiesComponent(role_comp.fixed_abilities.copy()))
             else:
-                print(f"Unknown role '{role_name}'. NPC spawned without role data.")
-        print(f"Spawned NPC (ID: {ent_id}) at ({x},{y}) with AIState, Physics, and PerceptionCache")
+                logger.warning("Unknown role '%s'. NPC spawned without role data.", role_name)
+        logger.info(
+            "Spawned NPC (ID: %s) at (%s,%s) with AIState, Physics, and PerceptionCache",
+            ent_id,
+            x,
+            y,
+        )
     elif kind_lower == "item":
         cm.add_component(ent_id, Tag("item"))
-        print(f"Spawned Item (ID: {ent_id}) at ({x},{y})")
+        logger.info("Spawned Item (ID: %s) at (%s,%s)", ent_id, x, y)
     else:
         em.destroy_entity(ent_id)
-        print(f"Unknown entity kind for spawn: '{kind}'. Known: npc, item.")
+        logger.error("Unknown entity kind for spawn: '%s'. Known: npc, item.", kind)
         return None
 
     spatial_index.insert(ent_id, (x, y))
@@ -201,20 +221,31 @@ def spawn(world: Any, kind: str, x_str: str | None = None, y_str: str | None = N
 
 
 def debug(world: Any, entity_id_str: str | None) -> None:
-    if entity_id_str is None: print("Usage: /debug <entity_id>"); return
-    try: entity_id = int(entity_id_str)
-    except ValueError: print(f"Invalid entity id: {entity_id_str}"); return
-    em = getattr(world, "entity_manager", None); cm = getattr(world, "component_manager", None)
-    if em is None or cm is None: print("World managers not initialized for debug."); return
-    if not em.has_entity(entity_id): print(f"Entity {entity_id} not found."); return
+    if entity_id_str is None:
+        logger.info("Usage: /debug <entity_id>")
+        return
+    try:
+        entity_id = int(entity_id_str)
+    except ValueError:
+        logger.error("Invalid entity id: %s", entity_id_str)
+        return
+    em = getattr(world, "entity_manager", None)
+    cm = getattr(world, "component_manager", None)
+    if em is None or cm is None:
+        logger.error("World managers not initialized for debug.")
+        return
+    if not em.has_entity(entity_id):
+        logger.error("Entity %s not found.", entity_id)
+        return
     entity_component_map = cm._components.get(entity_id)
-    print(f"--- Entity {entity_id} Components ---")
+    logger.info("--- Entity %s Components ---", entity_id)
     if entity_component_map:
         for name_type, comp_instance in entity_component_map.items(): # Iterate over type and instance
              comp_name_str = name_type.__name__ if isinstance(name_type, type) else str(name_type)
-             print(f"  {comp_name_str}: {comp_instance}")
-    else: print("  No components found for this entity.");
-    print("-----------------------------")
+             logger.info("  %s: %s", comp_name_str, comp_instance)
+    else:
+        logger.info("  No components found for this entity.")
+    logger.info("-----------------------------")
 
 
 def fps(world: Any, state: Dict[str, Any]) -> None:
@@ -224,14 +255,17 @@ def fps(world: Any, state: Dict[str, Any]) -> None:
         fps_is_now_enabled = toggle_live_fps()
         state["fps_enabled"] = fps_is_now_enabled
         world.fps_enabled = fps_is_now_enabled
-        if fps_is_now_enabled: print("Live FPS display enabled."); observer_print_fps()
-        else: print("Live FPS display disabled.")
+        if fps_is_now_enabled:
+            logger.info("Live FPS display enabled.")
+            observer_print_fps()
+        else:
+            logger.info("Live FPS display disabled.")
 
 
 def _install_follow_hook(world: Any, renderer_instance: Renderer, state: Dict[str, Any]) -> None:
     tm = getattr(world, "time_manager", None)
     if tm is None or renderer_instance is None:
-        print("TimeManager or renderer not found. Cannot follow entity.")
+        logger.error("TimeManager or renderer not found. Cannot follow entity.")
         return
     if getattr(tm, "_follow_hook_installed", False):
         return
@@ -249,7 +283,9 @@ def _install_follow_hook(world: Any, renderer_instance: Renderer, state: Dict[st
 
 def _install_gui_hook(world: Any, renderer_instance: Renderer) -> None:
     tm = getattr(world, "time_manager", None)
-    if tm is None: print("TimeManager not found. Cannot install GUI hook."); return
+    if tm is None:
+        logger.error("TimeManager not found. Cannot install GUI hook.")
+        return
     if getattr(tm, "_gui_renderer_hook_instance", None) == renderer_instance: return
     if not hasattr(tm, "_original_sleep_method_gui"):
         tm._original_sleep_method_gui = tm.sleep_until_next_tick
@@ -285,36 +321,36 @@ def gui(world: Any, state: Dict[str, Any]) -> None:
     state["gui_enabled"] = world.gui_enabled
     renderer_instance = state.get("renderer")
     if renderer_instance is None:
-        print("Error: Renderer not found in state. GUI cannot be managed.")
+        logger.error("Error: Renderer not found in state. GUI cannot be managed.")
         world.gui_enabled = False; state["gui_enabled"] = False; return
     if world.gui_enabled:
         _install_gui_hook(world, renderer_instance)
-        print("GUI enabled. Window should appear/update.")
+        logger.info("GUI enabled. Window should appear/update.")
         if renderer_instance.window and hasattr(renderer_instance.window, '_surface'):
             renderer_instance.window.clear((30,30,30))
             renderer_instance.update(world)
             renderer_instance.window.refresh()
     else:
         _uninstall_gui_hook(world)
-        print("GUI disabled.")
+        logger.info("GUI disabled.")
 
 
 def follow(world: Any, entity_id_str: str | None, state: Dict[str, Any]) -> None:
     renderer_instance = state.get("renderer")
     if renderer_instance is None:
-        print("Error: Renderer not found in state. Cannot follow entity.")
+        logger.error("Error: Renderer not found in state. Cannot follow entity.")
         return
     if entity_id_str is None:
-        print("Usage: /follow <entity_id>")
+        logger.info("Usage: /follow <entity_id>")
         return
     try:
         entity_id = int(entity_id_str)
     except ValueError:
-        print(f"Invalid entity id: {entity_id_str}")
+        logger.error("Invalid entity id: %s", entity_id_str)
         return
     state["follow_entity_id"] = entity_id
     _install_follow_hook(world, renderer_instance, state)
-    print(f"Following entity {entity_id}")
+    logger.info("Following entity %s", entity_id)
 
 
 def scenario(world: Any, name: str) -> None:
@@ -326,28 +362,32 @@ def scenario(world: Any, name: str) -> None:
 
         DefaultPickupScenario().setup(world)
     else:
-        print(f"Unknown scenario: {name}")
+        logger.error("Unknown scenario: %s", name)
 
 
 def help_command(state: Dict[str, Any]) -> None:
-    print("\nAvailable commands:")
-    print("  /help                - Show this help message.")
-    print("  /gui                 - Toggle the Pygame GUI window.")
-    print("  /pause               - Pause the simulation.")
-    print("  /step                - Advance one tick if paused.")
-    print("  /fps                 - Toggle live FPS display in console.")
-    print("  /save [path]         - Save current world. Default: saves/world_state.json.gz")
-    print("  /reload abilities    - Hot-reload abilities.")
-    print("  /spawn <kind> [x] [y]- Spawn entity (npc, item). E.g., /spawn npc 5 5 or /spawn item")
-    print("  /debug <entity_id>   - Print component data for an entity.")
-    print("  /follow <entity_id>  - Center camera on an entity each tick.")
-    print("  /scenario <name>     - Load a scenario by name (e.g., default_pickup).")
-    print("  /quit                - Exit the application.\n")
+    help_lines = [
+        "\nAvailable commands:",
+        "  /help                - Show this help message.",
+        "  /gui                 - Toggle the Pygame GUI window.",
+        "  /pause               - Pause the simulation.",
+        "  /step                - Advance one tick if paused.",
+        "  /fps                 - Toggle live FPS display in console.",
+        "  /save [path]         - Save current world. Default: saves/world_state.json.gz",
+        "  /reload abilities    - Hot-reload abilities.",
+        "  /spawn <kind> [x] [y]- Spawn entity (npc, item). E.g., /spawn npc 5 5 or /spawn item",
+        "  /debug <entity_id>   - Print component data for an entity.",
+        "  /follow <entity_id>  - Center camera on an entity each tick.",
+        "  /scenario <name>     - Load a scenario by name (e.g., default_pickup).",
+        "  /quit                - Exit the application.\n",
+    ]
+    for line in help_lines:
+        logger.info(line)
 
 
 def execute(command: str, args: list[str], world: Any, state: Dict[str, Any]) -> Any:
     # +++ UNMISSABLE DEBUG PRINT +++
-    print(f"[[[[[ TOP OF commands.execute CALLED! command: {command} ]]]]]")
+    logger.debug("TOP OF commands.execute CALLED! command: %s", command)
     # +++ END UNMISSABLE DEBUG PRINT +++
 
     if "running" not in state: state["running"] = True
@@ -357,7 +397,11 @@ def execute(command: str, args: list[str], world: Any, state: Dict[str, Any]) ->
 
     if cmd_lower == "spawn" and args:
         spawned_id = spawn(world, args[0], args[1] if len(args) > 1 else None, args[2] if len(args) > 2 else None)
-        print(f"[[[[[ DEBUG commands.execute: spawn() returned: {spawned_id}, type: {type(spawned_id)} ]]]]]")
+        logger.debug(
+            "DEBUG commands.execute: spawn() returned: %s, type: %s",
+            spawned_id,
+            type(spawned_id),
+        )
         return_value = spawned_id 
     elif cmd_lower == "help":
         help_command(state)
@@ -394,10 +438,10 @@ def execute(command: str, args: list[str], world: Any, state: Dict[str, Any]) ->
         # return_value remains None
     elif cmd_lower == "quit":
         state["running"] = False
-        print("Quit command received. Shutting down...")
+        logger.info("Quit command received. Shutting down...")
         # return_value remains None
     else:
-        print(f"Unknown command: /{command}. Type /help for available commands.")
+        logger.error("Unknown command: /%s. Type /help for available commands.", command)
         # return_value remains None
     
     return return_value # Explicitly return the captured value (or None if not set)

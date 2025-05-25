@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 from typing import Any
-import logging 
+import logging
+
+logger = logging.getLogger(__name__)
 
 from .actions import (
     ActionQueue,
@@ -59,11 +61,21 @@ class ActionExecutionSystem:
                 break
             
             actor_id = getattr(action, 'actor', 'N/A')
-            print(f"[Tick {tick}] ActionExec: Processing {type(action).__name__} for actor {actor_id}. Action: {action}")
+            logger.debug(
+                "[Tick %s] ActionExec: Processing %s for actor %s. Action: %s",
+                tick,
+                type(action).__name__,
+                actor_id,
+                action,
+            )
 
             if isinstance(action, MoveAction):
                 if not cm.get_component(action.actor, Physics):
-                    print(f"[Tick {tick}] ActionExec: Actor {action.actor} missing Physics component for MoveAction. Adding one.")
+                    logger.debug(
+                        "[Tick %s] ActionExec: Actor %s missing Physics component for MoveAction. Adding one.",
+                        tick,
+                        action.actor,
+                    )
                     cm.add_component(action.actor, Physics(mass=1.0, vx=0.0, vy=0.0, friction=0.95))
                 
                 # print(f"[Tick {tick}] ActionExec: Applying force for MoveAction: dx={action.dx}, dy={action.dy} to entity {action.actor}") # Verbose
@@ -77,7 +89,7 @@ class ActionExecutionSystem:
             
             elif isinstance(action, LogAction):
                 log_message = f"[Tick {tick}][Agent {action.actor} LOG]: {action.message}"
-                print(log_message)
+                logger.info(log_message)
             
             elif isinstance(action, IdleAction):
                 pass 
@@ -88,15 +100,18 @@ class ActionExecutionSystem:
                 angel_system = get_angel_system(self.world)
                 try:
                     angel_system.queue_request(action.actor, action.description)
-                    print(
-                        f"[Tick {tick}][ActionExec] Agent {action.actor} queued generation of ability '{action.description}'."
+                    logger.info(
+                        "[Tick %s][ActionExec] Agent %s queued generation of ability '%s'.",
+                        tick,
+                        action.actor,
+                        action.description,
                     )
                 except Exception as e:
                     error_msg = (
                         f"Error during ability generation request for agent {action.actor} "
                         f"(desc: '{action.description}'): {e}"
                     )
-                    print(f"[Tick {tick}][ActionExec ERROR] {error_msg}")
+                    logger.error("[Tick %s][ActionExec] %s", tick, error_msg)
                 finally:
                     self.world.paused_for_angel = False
             
@@ -105,8 +120,11 @@ class ActionExecutionSystem:
                 if ability_system_instance:
                     kab = cm.get_component(action.actor, KnownAbilitiesComponent)
                     if kab is None or action.ability_name not in kab.known_class_names:
-                        print(
-                            f"[Tick {tick}][ActionExec] Agent {action.actor} does not possess ability '{action.ability_name}'."
+                        logger.info(
+                            "[Tick %s][ActionExec] Agent %s does not possess ability '%s'.",
+                            tick,
+                            action.actor,
+                            action.ability_name,
                         )
                         continue
 
@@ -114,21 +132,38 @@ class ActionExecutionSystem:
                         action.ability_name, action.actor, action.target_id
                     )
                     if success:
-                        print(
-                            f"[Tick {tick}][ActionExec] Agent {action.actor} successfully used ability '{action.ability_name}' (Target: {action.target_id})."
+                        logger.info(
+                            "[Tick %s][ActionExec] Agent %s successfully used ability '%s' (Target: %s).",
+                            tick,
+                            action.actor,
+                            action.ability_name,
+                            action.target_id,
                         )
                     else:
-                        print(
-                            f"[Tick {tick}][ActionExec] Agent {action.actor} FAILED to use ability '{action.ability_name}' (Target: {action.target_id}). Check cooldown/can_use."
+                        logger.warning(
+                            "[Tick %s][ActionExec] Agent %s FAILED to use ability '%s' (Target: %s). Check cooldown/can_use.",
+                            tick,
+                            action.actor,
+                            action.ability_name,
+                            action.target_id,
                         )
                 else:
-                    print(f"[Tick {tick}][ActionExec ERROR] AbilitySystem not found. Cannot execute UseAbilityAction for agent {action.actor}.")
+                    logger.error(
+                        "[Tick %s][ActionExec] AbilitySystem not found. Cannot execute UseAbilityAction for agent %s.",
+                        tick,
+                        action.actor,
+                    )
 
             # --- HANDLE PickupAction (Placeholder for now, actual logic in Phase 23) ---
             elif isinstance(action, PickupAction):
                 # For Phase 22, we are just logging it was requested.
                 # Actual pickup logic will be in Phase 23.
-                print(f"[Tick {tick}][ActionExec] Agent {action.actor} requested PICKUP for item {action.item_id}. (Execution logic pending Phase 23)")
+                logger.info(
+                    "[Tick %s][ActionExec] Agent %s requested PICKUP for item %s. (Execution logic pending Phase 23)",
+                    tick,
+                    action.actor,
+                    action.item_id,
+                )
                 # Placeholder: In Phase 23, this would call something like:
                 # pickup_system = self.world.systems_manager.get_system(PickupSystem) # or self.world.pickup_system_instance
                 # if pickup_system:

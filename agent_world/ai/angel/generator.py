@@ -5,9 +5,12 @@ from __future__ import annotations
 
 from pathlib import Path
 import re
-import inflection 
+import inflection
+import logging
 
 GENERATED_DIR = Path(__file__).resolve().parents[2] / "abilities" / "generated"
+
+logger = logging.getLogger(__name__)
 
 
 def _slugify(text: str) -> str:
@@ -82,7 +85,12 @@ __all__ = ["{class_name}"]
 '''
     GENERATED_DIR.mkdir(parents=True, exist_ok=True)
     path.write_text(template, encoding="utf-8")
-    print(f"[AngelGenerator] Generated ability '{class_name}' at {path} from description: '{desc}'")
+    logger.info(
+        "[AngelGenerator] Generated ability '%s' at %s from description: '%s'",
+        class_name,
+        path,
+        desc,
+    )
     return path
 
 __all__ = ["generate_ability"]
