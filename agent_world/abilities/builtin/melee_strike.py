@@ -38,7 +38,18 @@ class MeleeStrike(Ability):
     def execute(self, caster_id: int, world: Any, target_id: Optional[int] = None) -> None:
         if not self.can_use(caster_id, world, target_id):
             return
-        CombatSystem(world).attack(caster_id, target_id)  # type: ignore[arg-type]
+
+        combat_system = getattr(world, "combat_system_instance", None)
+        systems_manager = getattr(world, "systems_manager", None)
+        if combat_system is None and systems_manager is not None:
+            for sys_instance in systems_manager._systems:
+                if isinstance(sys_instance, CombatSystem):
+                    combat_system = sys_instance
+                    break
+        if combat_system is None:
+            combat_system = CombatSystem(world)
+
+        combat_system.attack(caster_id, target_id)  # type: ignore[arg-type]
 
 
 __all__ = ["MeleeStrike"]

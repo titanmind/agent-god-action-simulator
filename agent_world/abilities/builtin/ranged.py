@@ -96,14 +96,15 @@ class ArrowShot(Ability):
 
         inv.items.pop(0) # Consume one ammo
 
-        combat_system = None
-        if hasattr(world, 'systems_manager'): 
-            for sys_instance in world.systems_manager._systems:
+        combat_system = getattr(world, "combat_system_instance", None)
+        systems_manager = getattr(world, 'systems_manager', None)
+        if combat_system is None and systems_manager is not None:
+            for sys_instance in systems_manager._systems:
                 if isinstance(sys_instance, CombatSystem):
                     combat_system = sys_instance
                     break
-        if combat_system is None: 
-             print("[Ability ArrowShot] Warning: CombatSystem not found via SystemsManager, creating new instance.")
+        if combat_system is None:
+             print("[Ability ArrowShot] Warning: CombatSystem not found; creating new instance.")
              combat_system = CombatSystem(world) # Pass world here
 
         print(f"[Ability ArrowShot] Agent {caster_id} shooting at target {actual_target_to_attack}.")
