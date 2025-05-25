@@ -5,10 +5,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from collections import deque
-from typing import Deque, Optional, Union, List 
-
-# ID used by the GUI input handler for the local player controller
-PLAYER_ID = 0
+from typing import Deque, Optional, Union, List
 
 
 # ------------------------------------------------------------------
@@ -187,5 +184,5 @@ class ActionQueue:
 __all__ = [
     "MoveAction", "AttackAction", "LogAction", "IdleAction", 
     "GenerateAbilityAction", "UseAbilityAction", "PickupAction", "Action",
-    "ActionQueue", "parse_action_string", "PLAYER_ID",
+    "ActionQueue", "parse_action_string",
 ]
