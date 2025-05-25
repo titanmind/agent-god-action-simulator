@@ -4,13 +4,16 @@
 
 from __future__ import annotations
 from typing import Any
-import math # For floor/ceil
+import math  # For floor/ceil
+import logging
 
 from ..core.components.position import Position
 from ..utils.asset_generation import sprite_gen
 from ..utils import observer
 from .window import Window
 import pygame
+
+logger = logging.getLogger(__name__)
 
 # Define colors for tiles
 TILE_COLOR_MAP = {
@@ -201,13 +204,20 @@ class Renderer:
                      entity_render_details.append(detail)
 
             except Exception as e:
-                print(f"[Tick {current_tick}] Renderer.update: Error getting/drawing sprite for EID {entity_id}: {e}")
+                logger.warning(
+                    "[Tick %s] Renderer.update: Error getting/drawing sprite for EID %s: %s",
+                    current_tick,
+                    entity_id,
+                    e,
+                )
                 continue
         
         if entity_render_details:
-            print(f"[Tick {current_tick}] Entity Render Details (Zoom: {self.zoom:.2f}):")
+            logger.debug(
+                "[Tick %s] Entity Render Details (Zoom: %.2f):", current_tick, self.zoom
+            )
             for detail in entity_render_details:
-                print(f"  {detail}")
+                logger.debug("  %s", detail)
 
 
         fps_text = "FPS: --"
