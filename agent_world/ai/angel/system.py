@@ -141,8 +141,41 @@ class AngelSystem:
         world_constraints: dict,
         code_scaffolds: dict,
     ) -> str:
-        """Return an LLM prompt for generating ability code."""
-        return ""
+        """Return an LLM prompt for generating ability code.
+
+        Parameters
+        ----------
+        description:
+            Human readable ability description requested by the agent.
+        world_constraints:
+            Dictionary describing the available world API and limits for the
+            generated code. Typically produced by
+            :func:`agent_world.ai.angel.templates.get_world_constraints_for_angel`.
+        code_scaffolds:
+            Dictionary of small code snippets or templates that the Angel should
+            use as a starting point when producing the final Python code.
+        """
+
+        import json
+
+        parts = [
+            "You are the Angel LLM responsible for generating new Ability code.",
+            f"Requested ability description: {description}",
+            "",
+            "World Constraints:",
+            json.dumps(world_constraints, indent=2, default=str),
+            "",
+            "Code Scaffolds:",
+        ]
+
+        for key, snippet in code_scaffolds.items():
+            parts.append(f"# {key}")
+            parts.append(str(snippet))
+
+        parts.append("")
+        parts.append("Return ONLY valid Python code implementing the ability.")
+
+        return "\n".join(parts)
 
     # ------------------------------------------------------------------
     # Conceptual testing stub
