@@ -318,8 +318,15 @@ def follow(world: Any, entity_id_str: str | None, state: Dict[str, Any]) -> None
 
 
 def scenario(world: Any, name: str) -> None:
-    """Placeholder for loading and running a scenario."""
-    print(f"Scenario command received for '{name}' (stub).")
+    """Load and run a scenario by name."""
+
+    name = name.lower()
+    if name == "default_pickup":
+        from ...scenarios.default_pickup_scenario import DefaultPickupScenario
+
+        DefaultPickupScenario().setup(world)
+    else:
+        print(f"Unknown scenario: {name}")
 
 
 def help_command(state: Dict[str, Any]) -> None:
@@ -334,6 +341,7 @@ def help_command(state: Dict[str, Any]) -> None:
     print("  /spawn <kind> [x] [y]- Spawn entity (npc, item). E.g., /spawn npc 5 5 or /spawn item")
     print("  /debug <entity_id>   - Print component data for an entity.")
     print("  /follow <entity_id>  - Center camera on an entity each tick.")
+    print("  /scenario <name>     - Load a scenario by name (e.g., default_pickup).")
     print("  /quit                - Exit the application.\n")
 
 
