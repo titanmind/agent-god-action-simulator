@@ -799,6 +799,94 @@ Outline:
 • These BTs should be usable by `BehaviorTreeSystem` for agents not using LLMs or when LLM/planning fails.
 • Test new BT functionalities.
 
+
+## Phase 11.5 · AI Core Problem-Solving & Planner Refinement
+
+Enhance the agent's ability to recognize and plan for obstacles, trigger ability generation when necessary, and more robustly execute plans to achieve goals.
+
+### Wave 11.5-S (stub — merge first)
+
+Task 11.5-S-1
+Developer @dev-alice
+Files allowed:
+└─ agent_world/core/components/ai_state.py
+└─ agent_world/ai/planning/base_planner.py
+└─ tests/ai/planning/test_plan_execution_stubs.py
+Outline:
+• In `AIStateComponent`, add `plan_step_retries: int = 0` and `max_plan_step_retries: int = 3`.
+• In `AIStateComponent`, add `last_plan_generation_tick: int = -1`.
+• In `base_planner.py`, modify `ActionStep` if needed to include an optional `step_type: str` (e.g., "move", "interact", "generate_ability_for_obstacle"). This is a minor stub change; full usage is in 11.5-A.
+• Add basic tests for new `AIState` fields.
+
+### Wave 11.5-A (parallel once Wave 11.5-S merged)
+
+Task 11.5-A-1
+Developer @dev-bob
+Files allowed:
+└─ agent_world/ai/planning/llm_planner.py
+└─ agent_world/ai/llm/prompt_builder.py (for planner-specific prompt helper, if any)
+└─ tests/ai/planning/test_llm_planner_obstacle_awareness.py
+Outline:
+• Refine `LLMPlanner.create_plan`:
+    • Modify the prompt sent to the LLM to explicitly consider obstacles. It should request the LLM to include steps like "DEAL_WITH_OBSTACLE <obstacle_coords>" or "GENERATE_ABILITY 'description to remove obstacle at X,Y'" if a path to a goal target is perceived as blocked.
+    • Ensure `_parse_plan_text` correctly parses these new `ActionStep` types (using `step_type` if added in 11.5-S-1).
+• Test that the `LLMPlanner` generates plans that include obstacle-addressing steps when an agent's goal is clearly blocked by a known obstacle in the world state provided to the planner's prompt.
+
+Task 11.5-A-2
+Developer @dev-carol
+Files allowed:
+└─ agent_world/systems/ai/ai_reasoning_system.py
+└─ tests/systems/ai/test_ai_reasoning_plan_execution.py
+Outline:
+• Enhance `AIReasoningSystem.update` to more robustly handle `ai_comp.current_plan`:
+    • If an `ActionStep` is of type "DEAL_WITH_OBSTACLE" or "GENERATE_ABILITY_FOR_OBSTACLE", the system should formulate a specific prompt to the agent's decision LLM focused on *how* to deal with that obstacle (e.g., "Obstacle at X,Y blocks your path to Z. How do you proceed? Consider using/generating an ability.").
+    • If an action taken (from LLM or direct plan step) fails to change relevant state (e.g., agent tries to move but position doesn't change due to blockage, or `GENERATE_ABILITY` returns failure), increment `ai_comp.plan_step_retries`.
+    • If `plan_step_retries` exceeds `max_plan_step_retries`, clear `current_plan` and `plan_step_retries` to trigger a full replan in the next reasoning cycle (set `last_plan_generation_tick` to current tick to avoid immediate re-planning if planner also fails).
+• Test various plan execution scenarios, including successful steps, retries, and plan failure leading to replan trigger.
+
+Task 11.5-A-3
+Developer @dev-dave
+Files allowed:
+└─ agent_world/ai/llm/prompt_builder.py (the one in `agent_world/ai/llm/`)
+└─ tests/ai/test_prompt_builder_obstacle_context.py
+Outline:
+• Modify `agent_world/ai/llm/prompt_builder.build_prompt` to improve how obstacle information is presented to the agent's decision LLM when *not* executing a specific "DEAL_WITH_OBSTACLE" plan step (i.e., for general decision making).
+• If an agent has an active goal and its immediate path towards the goal's target (if applicable) is blocked by an obstacle from `pathfinding.OBSTACLES`, include a clear "SYSTEM NOTE: Your direct path to current goal target <target_id/coords> is blocked by an obstacle at <obstacle_coords>. Consider alternative actions or abilities."
+• This is a more generalized version of the old "CRITICAL SITUATION" logic, but presented as contextual information rather than a forced action list.
+• Test that this note appears in the prompt under appropriate conditions.
+
+Task 11.5-A-4
+Developer @dev-ellen
+Files allowed:
+└─ agent_world/systems/ai/ai_reasoning_system.py
+└─ agent_world/core/components/ai_state.py
+└─ tests/systems/ai/test_generate_ability_trigger.py
+Outline:
+• In `AIReasoningSystem`, if an agent decides (via LLM response to general prompt or a specific "DEAL_WITH_OBSTACLE" plan step) to use `GENERATE_ABILITY`, ensure the description provided to the Angel system is reasonably contextualized if the LLM only gives a vague description.
+    *   For example, if LLM says "GENERATE_ABILITY remove obstacle" and the system knows an obstacle at (X,Y) is blocking the current goal, augment the description to something like "remove obstacle at (X,Y) blocking path to goal Z".
+• This task focuses on the *triggering* and *description formulation* for `GENERATE_ABILITY`, not the generation itself.
+• Test that agents correctly decide to generate abilities for obstacles and that the descriptions are contextually relevant.
+
+### Wave 11.5-B (serial follow-up after Wave 11.5-A)
+
+Task 11.5-B-1
+Developer @dev-frank
+Files allowed:
+└─ tests/integration/test_pickup_scenario_obstacle_resolution.py
+└─ agent_world/scenarios/default_pickup_scenario.py (if minor adjustments needed for testability)
+Outline:
+• Create a new integration test (`test_pickup_scenario_obstacle_resolution.py`) that runs the `DefaultPickupScenario`.
+• This test must verify that the agent, when faced with the obstacle:
+    1.  Identifies the obstacle (either through planning or reactive prompting).
+    2.  Decides to generate an ability to remove/bypass the obstacle.
+    3.  Successfully requests and is granted a generic "remove obstacle" type ability by the Angel System (mock LLM for Angel to return a simple, functional "print and remove obstacle" stub if true code generation is too flaky for this test).
+    4.  Uses the newly acquired ability to clear the obstacle.
+    5.  Proceeds to pick up the target item.
+• This test will serve as a key validation for the success of Phase 11.5.
+
+This phase is designed to be a focused effort. If these tasks are completed successfully, the agents should be noticeably more capable of basic problem-solving involving obstacles, setting a much stronger foundation for the complex interactions planned in Phase 12.
+
+
 ## Phase 12 · Deepening Gameplay Systems & Agent Interaction
 
 Integrate AI decision-making more deeply into existing gameplay systems, allowing agents to intelligently interact with the world and each other.
