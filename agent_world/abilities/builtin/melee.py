@@ -93,8 +93,8 @@ class MeleeStrike(Ability):
             return
 
         combat_system = None
-        if hasattr(world, 'systems_manager'): # Try to get from SystemsManager
-            for sys_instance in world.systems_manager._systems:
+        if getattr(world, "systems_manager", None):
+            for sys_instance in getattr(world.systems_manager, "_systems", []):
                 if isinstance(sys_instance, CombatSystem):
                     combat_system = sys_instance
                     break
