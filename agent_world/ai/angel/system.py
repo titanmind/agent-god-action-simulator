@@ -119,6 +119,18 @@ class AngelSystem:
             if stub_code is None:
                 path = angel_generator.generate_ability(description)
             else:
+                if not self._conceptual_test_generated_code(stub_code, description):
+                    append_event(
+                        dest,
+                        tick,
+                        ANGEL_ACTION,
+                        {
+                            "stage": "conceptual_failure",
+                            "agent_id": agent_id,
+                            "description": description,
+                        },
+                    )
+                    return {"status": "failure", "reason": "conceptual test failed"}
                 path = angel_generator.generate_ability(description, stub_code=stub_code)
             class_name = None
             try:
@@ -205,8 +217,39 @@ class AngelSystem:
     def _conceptual_test_generated_code(
         self, generated_code: str, original_request: str
     ) -> bool:
-        """Return True if generated code passes conceptual tests."""
-        return True
+        """Use the LLM to reason about generated code without executing it."""
+
+        llm = getattr(self.world, "llm_manager_instance", None)
+        if llm is None:
+            return True
+
+        prompt = (
+            "You are the Angel LLM performing a conceptual code review.\n"
+            f"Original request: {original_request}\n"
+            "Here is the candidate Python code:\n"
+            f"""{generated_code}\n"""
+            "\n"
+            "Does this code appear to fulfil the request and use the API "
+            "correctly? Respond with 'PASS' if it looks sound, or 'FAIL' "
+            "followed by reasoning if there are issues."
+        )
+
+        try:
+            response = llm.request(
+                prompt,
+                self.world,
+                model=getattr(llm, "angel_generation_model", None),
+            )
+        except TypeError:
+            try:
+                response = llm.request(prompt, self.world)
+            except TypeError:
+                response = llm.request(prompt)
+
+        if isinstance(response, str):
+            verdict = response.strip().lower()
+            return verdict.startswith("pass")
+        return False
 
 
 def get_angel_system(world: Any) -> AngelSystem:
