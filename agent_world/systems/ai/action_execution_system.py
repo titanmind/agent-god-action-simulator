@@ -85,18 +85,15 @@ class ActionExecutionSystem:
             # --- HANDLE GenerateAbilityAction ---
             elif isinstance(action, GenerateAbilityAction):
                 self.world.paused_for_angel = True
+                angel_system = get_angel_system(self.world)
                 try:
-                    result = get_angel_system(self.world).generate_and_grant(
-                        action.actor, action.description
+                    angel_system.queue_request(action.actor, action.description)
+                    print(
+                        f"[Tick {tick}][ActionExec] Agent {action.actor} queued generation of ability '{action.description}'."
                     )
-                    log_msg = (
-                        f"Agent {action.actor} requested generation of ability: '{action.description}'. "
-                        f"Result: {result}"
-                    )
-                    print(f"[Tick {tick}][ActionExec] {log_msg}")
                 except Exception as e:
                     error_msg = (
-                        f"Error during ability generation for agent {action.actor} "
+                        f"Error during ability generation request for agent {action.actor} "
                         f"(desc: '{action.description}'): {e}"
                     )
                     print(f"[Tick {tick}][ActionExec ERROR] {error_msg}")

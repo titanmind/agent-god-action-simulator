@@ -37,6 +37,7 @@ from .systems.ability.ability_system import AbilitySystem
 from .systems.ai.ai_reasoning_system import AIReasoningSystem
 from .systems.ai.behavior_tree_system import BehaviorTreeSystem
 from .ai.behaviors.creature_bt import build_creature_tree
+from .ai.angel.system import get_angel_system
 
 try:
     from .systems.ai.action_execution_system import ActionExecutionSystem
@@ -153,6 +154,8 @@ def bootstrap(config_path: str | Path = Path("config.yaml")) -> World:
     sm.register(ability_sys) # AbilitySystem needs to be registered
     if not hasattr(world, "ability_system_instance"):
         world.ability_system_instance = ability_sys
+    angel_system = get_angel_system(world)
+    sm.register(angel_system)
     sm.register(ai_reasoning_sys)
 
     if ActionExecutionSystem is not None:
@@ -362,6 +365,8 @@ def main() -> None:
 
                     tm.sleep_until_next_tick()
                 else:
+                    if getattr(world, "angel_system_instance", None):
+                        world.angel_system_instance.process_pending_requests()
                     time.sleep(0.016)
 
                 step_once = False
