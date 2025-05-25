@@ -67,6 +67,8 @@ BLOCKER <phase>-<wave>-<task>
 
 ## 7 · Deterministic LLM & Tests
 
+ALWAYS SET PYTHON PATH BEFORE RUNNING TESTS
+
 * The default configuration sets `llm.mode = offline`.
 * **Two test tiers**  
   1. **Core / Unit** – must pass (`pytest -q tests/core tests/systems`).  
