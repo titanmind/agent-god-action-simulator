@@ -17,3 +17,19 @@ llm:
 cache:
   sprite_max: 10000      # max images in RAM
   log_retention_mb: 50   # event-log rotation
+
+logging:
+  global_level: "INFO" # Default for all modules
+  module_levels:
+    agent_world.ai.llm.llm_manager: "DEBUG"         # Detailed LLM communication
+    agent_world.ai.llm.prompt_builder: "DEBUG"    # See full prompts only when needed for this module
+    agent_world.ai.prompt_builder: "INFO"         # The higher-level one can be INFO
+    agent_world.ai.angel.system: "DEBUG"          # Angel system decisions
+    agent_world.ai.angel.generator: "INFO"
+    agent_world.ai.planning.llm_planner: "DEBUG"  # Planner decisions and prompts
+    agent_world.systems.ai.ai_reasoning_system: "DEBUG" # Core AI decision loop, plans, actions
+    agent_world.systems.ai.action_execution_system: "INFO" # Usually INFO is enough here
+    agent_world.systems.ai.actions: "INFO"        # Action parsing can be INFO unless debugging parsing
+    # agent_world.systems.movement.physics_system: "INFO" # Set to DEBUG if you need physics step-by-step
+    # agent_world.systems.movement.movement_system: "INFO" # Set to DEBUG if you need movement step-by-step
+    # __main__: "DEBUG" # If you want main.py itself to be very verbose

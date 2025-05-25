@@ -31,7 +31,8 @@ class DefaultPickupScenario(BaseScenario):
         if agent_id and item_id and world.component_manager:
             ai_state = world.component_manager.get_component(agent_id, AIState)
             if ai_state:
-                ai_state.goals = [f"Acquire item {item_id}"]
+                from ..core.components.ai_state import Goal
+                ai_state.goals = [Goal(type="Acquire item", target=item_id)]
                 print(
                     f"[Scenario] Agent {agent_id} at ({center_x},{center_y}) given goal: {ai_state.goals}"
                 )
