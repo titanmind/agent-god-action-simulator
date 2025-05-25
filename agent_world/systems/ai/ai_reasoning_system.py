@@ -80,7 +80,13 @@ class AIReasoningSystem:
                 return (x, y)
         return None
 
-    def _contextualize_generate_ability(self, action_text: str, ai_comp: AIState, entity_id: int) -> str:
+    def _contextualize_generate_ability(
+        self,
+        action_text: str,
+        ai_comp: AIState,
+        entity_id: int,
+        plan_step: ActionStep | None = None,
+    ) -> str:
         """Ensure GENERATE_ABILITY descriptions mention relevant obstacle context."""
         if not action_text.upper().startswith("GENERATE_ABILITY"):
             return action_text
@@ -99,19 +105,23 @@ class AIReasoningSystem:
         obs_coords: Tuple[int, int] | None = None
         goal_target_display: Any = None # For logging/description
 
-        # Try to get context from the current plan step if it's about an obstacle
-        if ai_comp.current_plan: # This check might be redundant if called after popping, but good for safety
-            # This logic assumes the current step *being processed* is the one related to GENERATE_ABILITY.
-            # If GENERATE_ABILITY is a *result* of a DEAL_WITH_OBSTACLE step,
-            # then the current_plan might be empty or on the next step.
-            # This function might need to look at the *previously processed* step,
-            # or have the obstacle context passed to it.
-            # For now, let's assume the LLM prompt for GENERATE_ABILITY was formed
-            # when DEAL_WITH_OBSTACLE was the active step.
-
-            # Simplified: If the LLM decides to GENERATE_ABILITY, it should have gotten context
-            # from the prompt. We look for general path blockage if no specific plan step context.
-            pass # Placeholder for more specific plan step context if available
+        # Try to extract obstacle context directly from the triggering plan step
+        step_ref = plan_step if plan_step is not None else (ai_comp.current_plan[0] if ai_comp.current_plan else None)
+        if step_ref is not None:
+            obstacle_param = (
+                step_ref.parameters.get("obstacle")
+                or step_ref.parameters.get("coords")
+                or step_ref.parameters.get("coords_str")
+                or step_ref.parameters.get("obstacle_ref")
+            )
+            goal_target_display = step_ref.parameters.get("goal")
+            if obstacle_param:
+                try:
+                    vals = [int(v.strip()) for v in obstacle_param.strip("() ").split(",")]
+                    if len(vals) == 2:
+                        obs_coords = (vals[0], vals[1])
+                except Exception:
+                    pass
 
         # If no specific plan context, check general path to current goal
         if obs_coords is None:
@@ -124,9 +134,16 @@ class AIReasoningSystem:
                 target_coords_tuple: Tuple[int, int] | None = None
                 if isinstance(target_entity_id_or_coords, int):
                     t_pos = cm.get_component(target_entity_id_or_coords, Position)
-                    if t_pos: target_coords_tuple = (t_pos.x, t_pos.y)
+                    if t_pos:
+                        target_coords_tuple = (t_pos.x, t_pos.y)
+                        goal_target_display = target_coords_tuple
                 elif isinstance(target_entity_id_or_coords, (tuple, list)) and len(target_entity_id_or_coords) == 2:
-                    try: target_coords_tuple = (int(target_entity_id_or_coords[0]), int(target_entity_id_or_coords[1]))
+                    try:
+                        target_coords_tuple = (
+                            int(target_entity_id_or_coords[0]),
+                            int(target_entity_id_or_coords[1]),
+                        )
+                        goal_target_display = target_coords_tuple
                     except ValueError: pass
                 
                 if target_coords_tuple:
@@ -138,7 +155,11 @@ class AIReasoningSystem:
             obs_str = f"({obs_coords[0]},{obs_coords[1]})"
             if obs_str not in desc: # Only add if not already mentioned
                 if goal_target_display:
-                    new_desc = f"{desc} for obstacle at {obs_str} blocking path to goal target {goal_target_display}"
+                    if isinstance(goal_target_display, tuple):
+                        gtd = f"({goal_target_display[0]},{goal_target_display[1]})"
+                    else:
+                        gtd = str(goal_target_display)
+                    new_desc = f"{desc} for obstacle at {obs_str} blocking path to goal target {gtd}"
                 else:
                     new_desc = f"{desc} for obstacle at {obs_str}"
                 logger.info(
@@ -200,13 +221,16 @@ class AIReasoningSystem:
                 if self.behavior_tree:
                     action = self.behavior_tree.run(entity_id, self.world)
                     if action:
-                        if not self._sink_wrapped: # Assuming direct enqueue if not wrapped
+                        if not self._sink_wrapped:
                             if self.action_queue is None:
                                 self.action_queue = getattr(self.world, "action_queue", None)
                             if self.action_queue is not None:
                                 for act_obj in parse_action_string(entity_id, action):
-                                    self.action_queue._queue.append(act_obj) # Enqueue Action objects
-                        else: # If wrapped, append raw string
+                                    self.action_queue._queue.append(act_obj)
+                            else:
+                                # Fallback to raw list if no queue available
+                                self.action_tuples_list.append((entity_id, action))
+                        else:
                             self.action_tuples_list.append((entity_id, action))
                 continue # Done with this non-LLM agent
 
@@ -256,8 +280,11 @@ class AIReasoningSystem:
             
             plan_step_processed_this_cycle = False
 
+            current_plan_step: ActionStep | None = None
+
             if ai_comp.current_plan:
-                step = ai_comp.current_plan[0] # Look at the current step
+                step = ai_comp.current_plan[0]  # Look at the current step
+                current_plan_step = step
                 step_type_upper = (step.step_type.upper() if step.step_type else step.action.upper())
                 
                 logger.debug("[Tick %s][AI Agent %s] Processing plan step: %s", tm.tick_counter, entity_id, step)
@@ -289,8 +316,23 @@ class AIReasoningSystem:
                 elif step_type_upper in {"DEAL_WITH_OBSTACLE", "GENERATE_ABILITY_FOR_OBSTACLE"}:
                     obstacle_context = ""
                     if step_type_upper == "DEAL_WITH_OBSTACLE":
-                        coords = step.parameters.get("coords_str") or step.parameters.get("coords") or step.parameters.get("obstacle_ref")
-                        obstacle_context = f"Obstacle at {coords} blocks your path. How do you proceed? Consider using/generating an ability."
+                        coords = (
+                            step.parameters.get("coords_str")
+                            or step.parameters.get("coords")
+                            or step.parameters.get("obstacle_ref")
+                            or step.parameters.get("obstacle")
+                        )
+                        goal_target = step.parameters.get("goal")
+                        if goal_target:
+                            obstacle_context = (
+                                f"Obstacle at {coords} blocks your path to {goal_target}. "
+                                "How do you proceed? Consider using/generating an ability."
+                            )
+                        else:
+                            obstacle_context = (
+                                f"Obstacle at {coords} blocks your path. "
+                                "How do you proceed? Consider using/generating an ability."
+                            )
                     elif step_type_upper == "GENERATE_ABILITY_FOR_OBSTACLE":
                         desc = step.parameters.get("description", "deal with an obstacle")
                         obstacle_context = f"You need to generate an ability to '{desc}'. Formulate the GENERATE_ABILITY action."
@@ -330,8 +372,23 @@ class AIReasoningSystem:
                             step = ai_comp.current_plan[0]
                             step_type_upper = (step.step_type.upper() if step.step_type else step.action.upper())
                             if step_type_upper == "DEAL_WITH_OBSTACLE":
-                                coords = step.parameters.get("coords_str") or step.parameters.get("coords") or step.parameters.get("obstacle_ref")
-                                prompt_context_for_llm = f"\nSYSTEM TASK: Obstacle at {coords} blocks your path. Decide how to proceed. Consider using/generating an ability."
+                                coords = (
+                                    step.parameters.get("coords_str")
+                                    or step.parameters.get("coords")
+                                    or step.parameters.get("obstacle_ref")
+                                    or step.parameters.get("obstacle")
+                                )
+                                goal_target = step.parameters.get("goal")
+                                if goal_target:
+                                    prompt_context_for_llm = (
+                                        f"\nSYSTEM TASK: Obstacle at {coords} blocks your path to {goal_target}. "
+                                        "Decide how to proceed. Consider using/generating an ability."
+                                    )
+                                else:
+                                    prompt_context_for_llm = (
+                                        f"\nSYSTEM TASK: Obstacle at {coords} blocks your path. "
+                                        "Decide how to proceed. Consider using/generating an ability."
+                                    )
                             elif step_type_upper == "GENERATE_ABILITY_FOR_OBSTACLE":
                                 desc = step.parameters.get("description", "deal with an obstacle")
                                 prompt_context_for_llm = f"\nSYSTEM TASK: You need to generate an ability to '{desc}'. Formulate the GENERATE_ABILITY action string."
@@ -428,7 +485,11 @@ class AIReasoningSystem:
                     ai_comp.pending_llm_prompt_id = None
             
             # --- Behavior Tree Fallback ---
-            if not final_action_to_take and self.behavior_tree:
+            if (
+                not final_action_to_take
+                and self.behavior_tree
+                and ai_comp.pending_llm_prompt_id is None
+            ):
                 if llm_attempt_made_or_resolved_this_cycle or self.llm.mode == "offline":
                      logger.debug(
                         "[Tick %s][AI Agent %s] No valid LLM action (Mode: %s, Pending ID: %s). Trying BT.",
@@ -448,7 +509,7 @@ class AIReasoningSystem:
             if final_action_to_take:
                 if final_action_to_take.upper().startswith("GENERATE_ABILITY"):
                     final_action_to_take = self._contextualize_generate_ability(
-                        final_action_to_take, ai_comp, entity_id
+                        final_action_to_take, ai_comp, entity_id, current_plan_step
                     )
 
                 logger.info(
@@ -457,15 +518,19 @@ class AIReasoningSystem:
                 )
 
                 # Enqueue parsed Action objects
-                if self.action_queue is None: # One-time fetch if None
-                    self.action_queue = getattr(self.world, "action_queue", None)
-
-                if self.action_queue is not None:
-                    parsed_actions_list = parse_action_string(entity_id, final_action_to_take)
-                    for act_obj in parsed_actions_list:
-                        self.action_queue._queue.append(act_obj)
-                else: # Fallback to raw string list if queue is somehow still None (should not happen)
+                if self._sink_wrapped:
+                    # RawActionCollector handles parsing and queueing
                     self.action_tuples_list.append((entity_id, final_action_to_take))
+                else:
+                    if self.action_queue is None:
+                        self.action_queue = getattr(self.world, "action_queue", None)
+
+                    if self.action_queue is not None:
+                        for act_obj in parse_action_string(entity_id, final_action_to_take):
+                            self.action_queue._queue.append(act_obj)
+                    else:
+                        # Fallback to raw list if no queue available
+                        self.action_tuples_list.append((entity_id, final_action_to_take))
 
                 ai_comp.last_llm_action_tick = tm.tick_counter # Update cooldown tick
             
