@@ -14,3 +14,21 @@ guard:
   fixed_abilities:
     - MeleeStrike
     - ArrowShot
+
+trader:
+  can_request_abilities: false
+  uses_llm: true
+  fixed_abilities:
+    - TradeAbility
+
+crafter:
+  can_request_abilities: true
+  uses_llm: true
+  fixed_abilities:
+    - CraftItem
+
+scavenger:
+  can_request_abilities: false
+  uses_llm: false
+  fixed_abilities:
+    - HarvestAbility
