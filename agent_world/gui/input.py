@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Any, Dict
 import pygame
 
-from ..systems.ai.actions import ActionQueue, PLAYER_ID
+from ..systems.ai.actions import ActionQueue
 from ..core.components.position import Position
 from ..utils import observer
 from ..utils.cli import commands 

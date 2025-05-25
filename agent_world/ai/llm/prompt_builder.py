@@ -18,8 +18,7 @@ from ...core.components.inventory import Inventory
 from ...core.components.ai_state import AIState
 from ...core.components.role import RoleComponent
 from ...core.components.perception_cache import PerceptionCache
-from ...systems.interaction.pickup import Tag 
-from ...systems.ai.actions import PLAYER_ID 
+from ...systems.interaction.pickup import Tag
 from .llm_manager import LLMManager
 from ...systems.ability.ability_system import AbilitySystem
 from ...systems.movement.pathfinding import is_blocked 
@@ -278,7 +277,6 @@ Your Action to address the CRITICAL SITUATION:"""
     base_lines = [
         f"You are Agent {agent_id}. Your personality is \"{my_personality}\".",
         f"Your current position is {current_pos_str}. The world is a grid of size {world_width}x{world_height}.",
-        f"Player (ID {PLAYER_ID}) is controlled by a human.",
         "",
         "Your primary directive is to achieve your goals. Use exploration and interaction intelligently.",
         "If you are at a world boundary, DO NOT try to move further in that direction.",
