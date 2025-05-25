@@ -22,7 +22,9 @@ class CraftingSystem:
     ) -> None:
         self.world = world
         if recipe_path is None:
-            recipe_path = Path(__file__).resolve().parents[3] / "recipes.json"
+            recipe_path = (
+                Path(__file__).resolve().parents[2] / "data" / "recipes.json"
+            )
         self.recipes = self._load_recipes(recipe_path)
 
     # ------------------------------------------------------------------

@@ -34,6 +34,7 @@ class AIState:
     personality: str
     goals: List[Goal] = field(default_factory=list)
     current_plan: List[ActionStep] = field(default_factory=list)
+    known_recipes: list[str] = field(default_factory=list)
     
     pending_llm_prompt_id: str | None = None
     pending_llm_for_plan_step_action: str | None = None 

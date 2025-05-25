@@ -113,6 +113,14 @@ def build_prompt(agent_id: int, world: World, *, memory_k: int = 5) -> str:
     role_comp = cm.get_component(agent_id, RoleComponent)
     can_request_abilities = role_comp.can_request_abilities if role_comp else True
 
+    inventory_str = "empty"
+    if agent_inventory and agent_inventory.items:
+        inventory_str = ", ".join(str(i) for i in agent_inventory.items)
+
+    known_recipes_str = "None"
+    if agent_ai_state and agent_ai_state.known_recipes:
+        known_recipes_str = ", ".join(agent_ai_state.known_recipes)
+
     agent_specific_world_data = {} 
     agent_specific_world_data["world_info"] = {
         "size": f"{world_width}x{world_height} (X:0-{world_width-1}, Y:0-{world_height-1})",
@@ -246,8 +254,13 @@ def build_prompt(agent_id: int, world: World, *, memory_k: int = 5) -> str:
     ])
     action_list_text = "\n".join(action_lines)
 
-    focus_lines = ["--- FOCUS FOR THIS TURN ---", f"YOUR CURRENT GOALS: {my_goals_str}"]
-    if can_request_abilities: # Only show known abilities if they *can* request/use them
+    focus_lines = [
+        "--- FOCUS FOR THIS TURN ---",
+        f"YOUR CURRENT GOALS: {my_goals_str}",
+        f"INVENTORY: {inventory_str}",
+        f"KNOWN RECIPES: {known_recipes_str}",
+    ]
+    if can_request_abilities:  # Only show known abilities if they *can* request/use them
         focus_lines.append(f"ABILITIES YOU KNOW: {my_known_abilities_str}")
     if dynamic_advice_section:
         focus_lines.append(dynamic_advice_section)
