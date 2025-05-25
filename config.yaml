@@ -28,8 +28,8 @@ logging:
     agent_world.ai.angel.generator: "INFO"
     agent_world.ai.planning.llm_planner: "DEBUG"  # Planner decisions and prompts
     agent_world.systems.ai.ai_reasoning_system: "DEBUG" # Core AI decision loop, plans, actions
-    agent_world.systems.ai.action_execution_system: "INFO" # Usually INFO is enough here
-    agent_world.systems.ai.actions: "INFO"        # Action parsing can be INFO unless debugging parsing
+    agent_world.systems.ai.action_execution_system: "DEBUG" # Usually INFO is enough here
+    agent_world.systems.ai.actions: "DEBUG"        # Action parsing can be INFO unless debugging parsing
     # agent_world.systems.movement.physics_system: "INFO" # Set to DEBUG if you need physics step-by-step
     # agent_world.systems.movement.movement_system: "INFO" # Set to DEBUG if you need movement step-by-step
     # __main__: "DEBUG" # If you want main.py itself to be very verbose
