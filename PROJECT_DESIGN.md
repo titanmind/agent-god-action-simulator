@@ -32,6 +32,7 @@ main.py
 │   │  │  ├─ ActionExecutionSystem      // Consumes agent actions
 │   │  │  ├─ AIReasoningSystem          // Handles agent LLM decisions & BT fallbacks
 │   │  │  ├─ AbilitySystem              // Manages ability loading & cooldowns
+│   │  │  ├─ AngelSystem                // Registered but idle unless paused
 │   │  │  └─ … other gameplay systems …
 │   │  └─ TimeManager.sleep_until_next_tick() // Advances game time
 │   └─ AngelSystem.process_pending_requests() // Runs if world.paused_for_angel IS True
@@ -42,7 +43,7 @@ main.py
 ├── Persistence Task                       // Incremental and full world state saves
 └── CLI Input Thread                       // For developer interaction
 ```
-*   **World Pause for Angel:** When an agent requests an ability, the main tick loop pauses normal system updates and dedicates processing to the `AngelSystem`.
+*   **World Pause for Angel:** When an agent requests an ability, the main tick loop pauses other systems. `AngelSystem.process_pending_requests()` runs until generation completes.
 *   *Soft budget* 100 ms per game tick (when not paused for Angel); overruns logged.
 
 ---
@@ -58,7 +59,7 @@ main.py
     *   **Responsibilities:**
         1.  **Vault Search:** First, attempts to semantically match the agent's request against a curated "Vault" of pre-built, robust abilities (`abilities/vault/`). If a match is found, it grants this existing ability.
         2.  **LLM-Powered Code Generation:** If no Vault match, the Angel System uses its own (potentially more powerful) LLM instance to write new Python ability code. This LLM is prompted with the request, relevant world constraints, and ability code templates/scaffolds.
-        3.  **Conceptual Sandboxed Testing:** The Angel's LLM is guided to "reason about" testing its generated code against API usage and functional goals.
+        3.  **Conceptual Testing:** The Angel's LLM only reasons about potential tests; generated code is not executed under `RestrictedPython` at runtime.
         4.  **Ability Granting:** Upon successful generation or Vault selection, the ability's class name is added to the requesting agent's `KnownAbilitiesComponent`.
         5.  **Agent Turn Redo:** After the Angel completes and unpauses the world, the requesting agent immediately gets to re-evaluate its turn, now aware of the new ability, bypassing its normal LLM cooldown for this single re-evaluation.
     *   **Output:** Generated Python ability files are saved to `agent_world/abilities/generated/`.
@@ -96,7 +97,7 @@ RelationshipComponent    (faction, reputation_map)
 ```
 systems/
 ├ movement/            MovementSystem, PhysicsSystem, pathfinding_utils
-├ perception/          PerceptionSystem (includes observation of ability use)
+├ perception/          PerceptionSystem (tracks visible entities & ability uses)
 ├ interaction/         PickupSystem, TradingSystem, CraftingSystem
 ├ ability/             AbilitySystem (loads all abilities, manages cooldowns globally)
 ├ ai/                  AIReasoningSystem (differentiates by RoleComponent, manages agent LLM calls & BTs)
@@ -106,6 +107,7 @@ systems/
 └ … other systems …
 ```
 *   `ActionExecutionSystem` will verify an agent possesses an ability (via `KnownAbilitiesComponent`) before allowing `AbilitySystem.use()`.
+*   `PerceptionSystem` populates each agent's `PerceptionCacheComponent.visible_ability_uses` list for prompt building.
 
 ---
 
@@ -134,7 +136,7 @@ systems/
 ## 8 · Persistence & Replay
 
 *   **Full Snapshot & Incremental Deltas:** Unchanged.
-*   **Event Log:** Critical for debugging and replay. Logs agent decisions, LLM prompts/responses (full text), Angel System actions, ability generations, and significant world events.
+*   **Event Log:** All major systems append structured events to a persistent log file (`world.persistent_event_log_path`) via `event_log.append_event`. This captures LLM prompts/responses, Angel actions, combat and crafting results, and other world events for replay.
 
 ---
 
@@ -142,6 +144,7 @@ systems/
 
 *   **Enhanced CLI:** Robust commands for spawning agents with specific roles, inspecting `KnownAbilitiesComponent` and `RoleComponent`, triggering Angel requests manually for testing, and manipulating world state.
 *   **Detailed Logging:** Comprehensive logging of LLM interactions (full prompts and raw responses), Angel System decisions, and agent reasoning steps.
+*   **Standard Logging:** Debug output now uses Python's `logging` module instead of `print` calls.
 
 ---
 
@@ -160,20 +163,28 @@ systems/
 
 ## 12 · Configuration Skeleton (`config.yaml`)
 
+The file is loaded through `agent_world.config.CONFIG`, providing dataclass access across the codebase.
+
 ```yaml
 world:
   size:            [100, 100]
   tick_rate:       10
-  # paused_for_angel_timeout_seconds: 60 // New: Max time world can be paused for Angel
+  max_entities:    8000
+  paused_for_angel_timeout_seconds: 60
 
 llm:
+  mode: offline
   agent_decision_model:  <model_identifier_for_agents>
-  angel_generation_model: <model_identifier_for_angel_code_gen> // Potentially different/larger
-  # ... other common LLM settings ...
+  angel_generation_model: <model_identifier_for_angel_code_gen>
 
-# paths:
-  # abilities_vault: "./agent_world/abilities/vault" // New path
-  # ... existing paths ...
+paths:
+  abilities_vault: "./agent_world/abilities/vault"
+  abilities_generated: "./agent_world/abilities/generated"
+  abilities_builtin: "./agent_world/abilities/builtin"
+
+cache:
+  sprite_max: 10000
+  log_retention_mb: 50
 ```
 
 ---
