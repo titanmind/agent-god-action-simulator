@@ -110,18 +110,9 @@ def test_agent_requests_generates_and_uses_heal_ability(
             
         world.systems_manager.update(world, i) # Pass world and current tick
 
-        # Optional: Log health at critical ticks for debugging if test fails
-        # if i in [0, 33, 34, 35, 55, 56, 57]:
-        #    health_comp_debug = world.component_manager.get_component(agent_id, Health)
-        #    if health_comp_debug:
-        #        print(f"[Test Debug Tick {i}] Agent {agent_id} Health: {health_comp_debug.cur}/{health_comp_debug.max}")
-
 
     # --- Assertions ---
     captured = capsys.readouterr() # Get all stdout
-    # print("\n--- Captured STDOUT from test run ---") # Uncomment for full debug
-    # print(captured.out)
-    # print("--- End Captured STDOUT ---\n")
     
     # 1. Assert the .py file for the ability was created
     target_generated_file_path = ABILITIES_GENERATED_DIR / expected_filename

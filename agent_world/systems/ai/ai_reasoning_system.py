@@ -70,7 +70,6 @@ class AIReasoningSystem:
             self.world.llm_manager_instance, 
             hasattr(self.world, 'async_llm_responses')
         ]):
-            # print(f"[Tick {tick}][AIReasoningSystem] World or essential managers not ready.")
             return
 
         em = self.world.entity_manager
@@ -217,7 +216,6 @@ class AIReasoningSystem:
                 fallback_action = self.behavior_tree.run(entity_id, self.world)
                 if fallback_action:
                     final_action_to_take = fallback_action
-                    # print(f"[Tick {tm.tick_counter}][AI Agent {entity_id}] Behavior tree provided fallback: '{fallback_action}'")
             
             if final_action_to_take:
                 logger.info(
@@ -244,7 +242,6 @@ class AIReasoningSystem:
                 # and behavior tree also didn't yield an action.
                 # Or, if the goal is for it to retry LLM immediately on <wait> type errors, then this line should be conditional.
                 # Current behavior: cooldown even on failed LLM attempt cycle if BT also fails.
-                # print(f"[Tick {tm.tick_counter}][AI Agent {entity_id}] LLM attempt cycle completed with no action, pending_id cleared. Cooldown started.") # DEBUG
                 ai_comp.last_llm_action_tick = tm.tick_counter
 
 

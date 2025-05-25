@@ -14,9 +14,9 @@ from .actions import (
     AttackAction,
     LogAction,
     IdleAction,
-    GenerateAbilityAction, # <<< IMPORTED
-    UseAbilityAction,      # <<< IMPORTED
-    PickupAction           # <<< IMPORTED (for future Phase 23)
+    GenerateAbilityAction,
+    UseAbilityAction,
+    PickupAction
 )
 from ..combat.combat_system import CombatSystem
 from ...core.components.force import apply_force
@@ -24,7 +24,7 @@ from ...core.components.physics import Physics
 from ...systems.movement.movement_system import Velocity
 from ...ai.angel import generator as angel_generator
 from ...ai.angel.system import get_angel_system
-from ...systems.ability.ability_system import AbilitySystem # <<< For finding AbilitySystem
+from ...systems.ability.ability_system import AbilitySystem
 from ...core.components.known_abilities import KnownAbilitiesComponent
 
 class ActionExecutionSystem:
@@ -165,22 +165,13 @@ class ActionExecutionSystem:
                         action.actor,
                     )
 
-            # --- HANDLE PickupAction (Placeholder for now, actual logic in Phase 23) ---
             elif isinstance(action, PickupAction):
-                # For Phase 22, we are just logging it was requested.
-                # Actual pickup logic will be in Phase 23.
                 logger.info(
-                    "[Tick %s][ActionExec] Agent %s requested PICKUP for item %s. (Execution logic pending Phase 23)",
+                    "[Tick %s][ActionExec] Agent %s requested PICKUP for item %s. (Execution logic pending)",
                     tick,
                     action.actor,
                     action.item_id,
                 )
-                # Placeholder: In Phase 23, this would call something like:
-                # pickup_system = self.world.systems_manager.get_system(PickupSystem) # or self.world.pickup_system_instance
-                # if pickup_system:
-                #     pickup_system.pickup_item(action.actor, action.item_id)
-                # else:
-                #     print(f"[Tick {tick}][ActionExec ERROR] PickupSystem not found for PICKUP action.")
 
 
             else:
