@@ -24,6 +24,58 @@ from .llm_manager import LLMManager
 from ...systems.ability.ability_system import AbilitySystem
 from ...systems.movement.pathfinding import is_blocked
 
+
+def _extract_goal_item_id(goals: List[str]) -> Optional[int]:
+    """Return the item id from a goal like 'Acquire item <id>'."""
+    for goal_str in goals:
+        if "acquire item" in goal_str.lower():
+            try:
+                return int(goal_str.lower().split("acquire item")[-1].strip())
+            except ValueError:
+                continue
+    return None
+
+
+def _get_visible_goal_item(
+    agent_id: int, goal_item_id: int, world: World
+) -> Optional[Dict[str, Any]]:
+    """Return basic details for the goal item if visible to the agent."""
+    cm = world.component_manager
+    em = world.entity_manager
+    perception_cache = cm.get_component(agent_id, PerceptionCache)
+    if perception_cache and perception_cache.visible:
+        for visible_eid in perception_cache.visible:
+            if visible_eid == goal_item_id and em.has_entity(visible_eid):
+                v_pos = cm.get_component(visible_eid, Position)
+                v_tag = cm.get_component(visible_eid, Tag)
+                if v_pos and v_tag and v_tag.name == "item":
+                    return {
+                        "id": visible_eid,
+                        "position": (v_pos.x, v_pos.y),
+                        "type": "item",
+                        "tag_name": v_tag.name,
+                    }
+    return None
+
+
+def _detect_blocking_obstacle(
+    agent_pos: Position, goal_pos: Position
+) -> Optional[tuple[tuple[int, int], str]]:
+    """Return obstacle position and direction if first step toward goal is blocked."""
+    dx = goal_pos.x - agent_pos.x
+    dy = goal_pos.y - agent_pos.y
+    if dx == 0 and dy == 0:
+        return None
+    if abs(dx) >= abs(dy):
+        step = (agent_pos.x + (1 if dx > 0 else -1), agent_pos.y)
+        direction = "East" if dx > 0 else "West"
+    else:
+        step = (agent_pos.x, agent_pos.y + (1 if dy > 0 else -1))
+        direction = "South" if dy > 0 else "North"
+    if is_blocked(step):
+        return step, direction
+    return None
+
 logger = logging.getLogger(__name__)
 
 _VISITED_OBJECTS_DURING_NORMALIZE: Set[int] = set()
@@ -79,6 +131,7 @@ def build_prompt(agent_id: int, world: World, *, memory_k: int = 5) -> str:
     agent_pos: Optional[Position] = cm.get_component(agent_id, Position)
     agent_ai_state: Optional[AIState] = cm.get_component(agent_id, AIState)
     agent_inventory: Optional[Inventory] = cm.get_component(agent_id, Inventory)
+    perception_cache = cm.get_component(agent_id, PerceptionCache)
 
     # +++ DEBUG BLOCK for Agent 2 Goals +++
     if agent_id == 2 and tm:
@@ -105,29 +158,13 @@ def build_prompt(agent_id: int, world: World, *, memory_k: int = 5) -> str:
 
     # --- Determine Critical Advice ---
     critical_advice_text = ""
-    primary_goal_item_id: Optional[int] = None
-    if my_goals_list:
-        for goal_str in my_goals_list:
-            if "acquire item" in goal_str.lower():
-                try: primary_goal_item_id = int(goal_str.lower().split("acquire item")[-1].strip())
-                except ValueError: pass
-                break
-    
-    is_goal_item_visible = False
+    primary_goal_item_id: Optional[int] = _extract_goal_item_id(my_goals_list) if my_goals_list else None
+
     visible_goal_item_details: Optional[Dict[str, Any]] = None
-    perception_cache = cm.get_component(agent_id, PerceptionCache)
-    if perception_cache and perception_cache.visible:
-        for visible_eid in perception_cache.visible: 
-            if em.has_entity(visible_eid) and visible_eid == primary_goal_item_id:
-                v_pos_comp = cm.get_component(visible_eid, Position)
-                v_tag_comp = cm.get_component(visible_eid, Tag)
-                if v_pos_comp and v_tag_comp and v_tag_comp.name == "item":
-                    is_goal_item_visible = True
-                    visible_goal_item_details = {
-                        "id": visible_eid, "position": f"({v_pos_comp.x},{v_pos_comp.y})",
-                        "type": "item", "tag_name": v_tag_comp.name
-                    }
-                    break 
+    is_goal_item_visible = False
+    if primary_goal_item_id is not None:
+        visible_goal_item_details = _get_visible_goal_item(agent_id, primary_goal_item_id, world)
+        is_goal_item_visible = visible_goal_item_details is not None
     
     known_obstacle_removal_ability_name: Optional[str] = None
     if my_known_abilities_str != "None":
@@ -138,19 +175,11 @@ def build_prompt(agent_id: int, world: World, *, memory_k: int = 5) -> str:
             known_obstacle_removal_ability_name = sorted(disintegrate_abilities)[-1] # crude way to get newest if multiple from _1, _2 etc.
 
     if agent_pos and primary_goal_item_id and is_goal_item_visible and visible_goal_item_details:
-        goal_item_pos_str = visible_goal_item_details['position']
-        goal_item_x = int(goal_item_pos_str.strip('()').split(',')[0]); goal_item_y = int(goal_item_pos_str.strip('()').split(',')[1])
-        
-        path_to_goal_blocked = False
-        obs_pos_tuple: Optional[tuple[int,int]] = None
-        blocked_direction = ""
+        goal_item_x, goal_item_y = visible_goal_item_details["position"]
 
-        if agent_pos.x == goal_item_x: 
-            if agent_pos.y > goal_item_y and is_blocked((agent_pos.x, agent_pos.y - 1)): path_to_goal_blocked = True; obs_pos_tuple = (agent_pos.x, agent_pos.y -1); blocked_direction="North"
-            elif agent_pos.y < goal_item_y and is_blocked((agent_pos.x, agent_pos.y + 1)): path_to_goal_blocked = True; obs_pos_tuple = (agent_pos.x, agent_pos.y +1); blocked_direction="South"
-        elif agent_pos.y == goal_item_y: 
-            if agent_pos.x > goal_item_x and is_blocked((agent_pos.x - 1, agent_pos.y)): path_to_goal_blocked = True; obs_pos_tuple = (agent_pos.x -1, agent_pos.y); blocked_direction="West"
-            elif agent_pos.x < goal_item_x and is_blocked((agent_pos.x + 1, agent_pos.y)): path_to_goal_blocked = True; obs_pos_tuple = (agent_pos.x +1, agent_pos.y); blocked_direction="East"
+        obstacle_info = _detect_blocking_obstacle(agent_pos, Position(goal_item_x, goal_item_y))
+        path_to_goal_blocked = obstacle_info is not None
+        obs_pos_tuple, blocked_direction = obstacle_info if obstacle_info else (None, "")
         
         if path_to_goal_blocked and obs_pos_tuple:
             if known_obstacle_removal_ability_name:
@@ -167,18 +196,25 @@ def build_prompt(agent_id: int, world: World, *, memory_k: int = 5) -> str:
                     "You MUST use `GENERATE_ABILITY <description>` to overcome this (e.g., "
                     "'GENERATE_ABILITY remove obstacle' or 'GENERATE_ABILITY phase through wall')."
                 )
-        
-        if not path_to_goal_blocked: 
+
+        if not path_to_goal_blocked:
             inventory_has_space = len(agent_inventory.items) < agent_inventory.capacity if agent_inventory else False
-            can_reach_item = (agent_pos.x == goal_item_x and agent_pos.y == goal_item_y) or \
-                             (abs(agent_pos.x - goal_item_x) + abs(agent_pos.y - goal_item_y) == 1 and not is_blocked((goal_item_x,goal_item_y)))
+            can_reach_item = (
+                agent_pos.x == goal_item_x and agent_pos.y == goal_item_y
+            ) or (
+                abs(agent_pos.x - goal_item_x) + abs(agent_pos.y - goal_item_y) == 1
+                and not is_blocked((goal_item_x, goal_item_y))
+            )
             if can_reach_item:
                 if inventory_has_space:
                     pickup_advice = (
-                        f"CRITICAL GOAL REACHABLE: Your goal item {primary_goal_item_id} is at {goal_item_pos_str} and you are "
+                        f"CRITICAL GOAL REACHABLE: Your goal item {primary_goal_item_id} is at ({goal_item_x},{goal_item_y}) and you are "
                         f"next to it or on it! You MUST use `PICKUP {primary_goal_item_id}` NOW."
                     )
-                else: pickup_advice = f"Your goal item {primary_goal_item_id} is at {goal_item_pos_str}, but inventory is full. Cannot `PICKUP`."
+                else:
+                    pickup_advice = (
+                        f"Your goal item {primary_goal_item_id} is at ({goal_item_x},{goal_item_y}), but inventory is full. Cannot `PICKUP`."
+                    )
                 if not critical_advice_text: critical_advice_text = pickup_advice
     
     if critical_advice_text:
