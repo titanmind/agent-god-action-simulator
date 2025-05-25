@@ -26,7 +26,8 @@ from .systems.ai.actions import ActionQueue
 from .core.systems_manager import SystemsManager
 from .systems.movement.physics_system import PhysicsSystem
 from .systems.movement.movement_system import MovementSystem
-from .systems.perception.perception_system import PerceptionSystem
+from .systems.perception.perception_system import PerceptionSystem as VisibilityPerceptionSystem
+from .systems.ai.perception_system import PerceptionSystem as EventPerceptionSystem
 from .systems.combat.combat_system import CombatSystem
 from .systems.interaction.pickup import PickupSystem
 from .systems.interaction.trading import TradingSystem
@@ -105,7 +106,8 @@ def bootstrap(config_path: str | Path = Path("config.yaml")) -> World:
     movement_sys = MovementSystem(world) # Renamed
     perception_cfg = cfg.get("perception", {})
     view_radius = int(perception_cfg.get("view_radius", 10))
-    perception_sys = PerceptionSystem(world, view_radius=view_radius) # Renamed
+    perception_sys = VisibilityPerceptionSystem(world, view_radius=view_radius)
+    event_perception_sys = EventPerceptionSystem(world)
     combat_event_log: list[dict[str, Any]] = []
     combat_sys = CombatSystem(world, event_log=combat_event_log) # Renamed
     pickup_sys = PickupSystem(world) # Renamed
@@ -123,6 +125,7 @@ def bootstrap(config_path: str | Path = Path("config.yaml")) -> World:
     sm.register(behavior_tree_system)
     world.behavior_tree_system_instance = behavior_tree_system
     sm.register(perception_sys)
+    sm.register(event_perception_sys)
     sm.register(combat_sys)
     sm.register(pickup_sys)
     sm.register(trading_sys)
