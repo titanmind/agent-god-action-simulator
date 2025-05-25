@@ -52,8 +52,8 @@ from .utils.cli.commands import execute, _install_gui_hook as install_gui_render
 from .gui.renderer import Renderer
 from .gui import input as gui_input
 from .core.components.position import Position
-from .core.components.ai_state import AIState  # For goal setting in scenario
-from .systems.movement.pathfinding import set_obstacles, clear_obstacles # For scenario obstacles
+from .systems.movement.pathfinding import clear_obstacles  # For scenario obstacles
+from .scenarios.default_pickup_scenario import DefaultPickupScenario
 
 
 DEFAULT_SAVE_PATH = Path("saves/world_state.json.gz")
@@ -254,7 +254,7 @@ def main() -> None:
     pygame.font.init()
 
     # --- SCENARIO SETUP: Clear any persistent obstacles from previous runs ---
-    clear_obstacles() # Clear obstacles at the start of each run for this scenario
+    clear_obstacles()  # Clear obstacles at the start of each run for this scenario
 
     world = load_or_bootstrap()
 
@@ -279,47 +279,12 @@ def main() -> None:
     world_center_x = world.size[0] // 2
     world_center_y = world.size[1] // 2
     actual_renderer.set_camera_center(float(world_center_x), float(world_center_y))
-    print(f"Initial camera center set to: ({actual_renderer.camera_world_x}, {actual_renderer.camera_world_y})")
+    print(
+        f"Initial camera center set to: ({actual_renderer.camera_world_x}, {actual_renderer.camera_world_y})"
+    )
 
-    initial_spawn_state = {"renderer": actual_renderer} # For GUI updates during spawn
-
-    # --- SCENARIO FOR ABILITY GENERATION & PICKUP (Goal 2.1) ---
-    agent_start_x = world_center_x
-    agent_start_y = world_center_y
-    
-    # Spawn agent who needs the item
-    agent_id_scenario = execute("spawn", ["npc", str(agent_start_x), str(agent_start_y)], world, initial_spawn_state)
-    
-    item_target_x = agent_start_x
-    item_target_y = agent_start_y - 2 
-    item_id_scenario = execute("spawn", ["item", str(item_target_x), str(item_target_y)], world, initial_spawn_state)
-
-    if agent_id_scenario and item_id_scenario and world.component_manager:
-        ai_state_agent = world.component_manager.get_component(agent_id_scenario, AIState)
-        if ai_state_agent:
-            ai_state_agent.goals = [f"Acquire item {item_id_scenario}"] 
-            print(f"[Scenario] Agent {agent_id_scenario} at ({agent_start_x},{agent_start_y}) given goal: {ai_state_agent.goals}")
-        item_pos_comp = world.component_manager.get_component(item_id_scenario, Position)
-        if item_pos_comp:
-             print(f"[Scenario] Item {item_id_scenario} spawned at ({item_pos_comp.x},{item_pos_comp.y}) for Agent {agent_id_scenario}.")
-        else:
-             print(f"[Scenario WARNING] Item {item_id_scenario} spawned but has no Position component!")
-
-    obstacle_pos = (agent_start_x, agent_start_y - 1) # Between agent and item
-    set_obstacles([obstacle_pos])
-    print(f"[Scenario] Obstacle placed at {obstacle_pos}")
-    # --- END SCENARIO ---
-
-    # +++ ADD THIS DEBUG BLOCK in main() +++
-    print(f" agent id scenario: {agent_id_scenario}")
-    print(f" world component manager: {world.component_manager}")
-    if agent_id_scenario and world.component_manager:
-        final_check_ai_state = world.component_manager.get_component(agent_id_scenario, AIState)
-        if final_check_ai_state:
-            print(f"[[[[[ PRE-LOOP CHECK (main.py) Agent {agent_id_scenario} AIState ID: {id(final_check_ai_state)}, Goals: {final_check_ai_state.goals} ]]]]]")
-        else:
-            print(f"[[[[[ PRE-LOOP CHECK (main.py) Agent {agent_id_scenario} AIState NOT FOUND ]]]]]")
-    # +++ END DEBUG BLOCK +++
+    # Run the default scenario if none specified via CLI
+    DefaultPickupScenario().setup(world)
 
 
     if world.gui_enabled and actual_renderer:
