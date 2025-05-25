@@ -14,12 +14,13 @@ import logging
 
 from ...core.world import World
 from ...core.components.position import Position
-from ...core.components.health import Health 
+from ...core.components.health import Health
 from ...core.components.inventory import Inventory
 from ...core.components.ai_state import AIState
 from ...core.components.role import RoleComponent
 from ...core.components.perception_cache import PerceptionCache
 from ...systems.interaction.pickup import Tag
+from ...systems.movement import pathfinding
 from .llm_manager import LLMManager
 
 logger = logging.getLogger(__name__)
@@ -175,6 +176,44 @@ def build_prompt(agent_id: int, world: World, *, memory_k: int = 5) -> str:
     if has_any_visible_item and inventory_has_space_for_general_pickup:
         dynamic_advice_lines.append("You see items nearby. If useful and you have space, consider `PICKUP <item_id>`." )
 
+    obstacle_note = ""
+    if agent_ai_state and my_goals_list and agent_pos:
+        # Skip if executing a dedicated DEAL_WITH_OBSTACLE step
+        executing_obstacle_step = False
+        if agent_ai_state.current_plan:
+            first_step = agent_ai_state.current_plan[0]
+            if first_step.step_type == "DEAL_WITH_OBSTACLE":
+                executing_obstacle_step = True
+        if not executing_obstacle_step:
+            goal = my_goals_list[0]
+            target = getattr(goal, "target", None)
+            target_coords = None
+            if isinstance(target, int):
+                t_pos = cm.get_component(target, Position)
+                if t_pos:
+                    target_coords = (t_pos.x, t_pos.y)
+            elif isinstance(target, (tuple, list)) and len(target) == 2:
+                target_coords = (int(target[0]), int(target[1]))
+            if target_coords:
+                dx = target_coords[0] - agent_pos.x
+                dy = target_coords[1] - agent_pos.y
+                candidate_steps = []
+                if dx != 0:
+                    candidate_steps.append((agent_pos.x + (1 if dx > 0 else -1), agent_pos.y))
+                if dy != 0:
+                    candidate_steps.append((agent_pos.x, agent_pos.y + (1 if dy > 0 else -1)))
+                obstacle_at = None
+                for step in candidate_steps:
+                    if step in pathfinding.OBSTACLES:
+                        obstacle_at = step
+                        break
+                if obstacle_at:
+                    target_display = target if isinstance(target, int) else target_coords
+                    obstacle_note = (
+                        f"SYSTEM NOTE: Your direct path to current goal target {target_display} "
+                        f"is blocked by an obstacle at {obstacle_at}. Consider alternative actions or abilities."
+                    )
+
     dynamic_advice_section = ""
     if dynamic_advice_lines:
         advice_text = "\n".join([f"- {line}" for line in dynamic_advice_lines])
@@ -224,6 +263,8 @@ def build_prompt(agent_id: int, world: World, *, memory_k: int = 5) -> str:
 {focus_section}
 {action_list_text}
 Based on your GOALS and current situation, what is Your Action:"""
+    if obstacle_note:
+        prompt = f"{obstacle_note}\n\n{prompt}"
     current_tick_for_log = tm.tick_counter if tm else "N/A"
     logger.debug(
         "\n--- [PromptBuilder Agent %s Tick %s] FULL STANDARD PROMPT SENT ---\n%s\n--- END FULL STANDARD PROMPT ---\n",
