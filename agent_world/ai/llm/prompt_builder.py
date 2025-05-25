@@ -93,7 +93,6 @@ def build_prompt(agent_id: int, world: World, *, memory_k: int = 5) -> str:
     
     my_goals_list = agent_ai_state.goals if agent_ai_state else []
     my_goals_str = ", ".join(my_goals_list) if my_goals_list else "None specified"
-    # print(f"[PromptBuilder DEBUG] For Agent {agent_id} at Tick {tm.tick_counter if tm else 'N/A'}, goals are: {my_goals_list}, resulting in my_goals_str: '{my_goals_str}'")
 
     my_known_abilities_str = "None"
     ability_system_instance = getattr(world, 'ability_system_instance', None)
