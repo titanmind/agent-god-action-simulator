@@ -483,3 +483,186 @@ Outline:
 • Create a new integration test that verifies several of Phase 8's fixes/alignments working together.
 • For example: an agent uses an ability, another agent perceives it (verifying `PerceptionCacheComponent.visible_ability_uses` and `EventLog` are populated), this perception influences the observing agent's next LLM decision (logged via new event logging), and `config.yaml` settings are respected.
 • This test asserts key PDD-aligned behaviors post-Phase 8.
+
+
+
+## Phase 9 · Code Cleanup & Architectural Refinements
+
+Address remaining inconsistencies, improve code quality by refactoring hardcoded elements and standardizing logging, and refine system integrations to better align with the PDD's architectural vision. This phase prepares the codebase for advanced feature development.
+
+### Wave 9-S (stub — merge first)
+
+Task 9-S-1
+Developer @dev-alice
+Files allowed:
+└─ agent_world/config.py
+└─ tests/core/test_config_module.py
+Outline:
+• Transform `agent_world/config.py` from a placeholder into a module that loads `config.yaml` at startup.
+• Define a simple dataclass or typed dictionary structure within `config.py` to hold parsed configuration values (e.g., `WorldConfig`, `LLMConfig`).
+• Add basic test to ensure `config.py` loads `config.yaml` and makes values accessible. (Actual usage by other modules will be in Wave 9-A).
+
+Task 9-S-2
+Developer @dev-bob
+Files allowed:
+└─ agent_world/ai/angel/system.py
+└─ agent_world/core/systems_manager.py
+└─ tests/angel/test_angel_system_registration_stub.py
+Outline:
+• Add a placeholder `update(self, world: Any, tick: int) -> None:` method to `AngelSystem`.
+• Add a placeholder `process_pending_requests(self) -> None:` method to `AngelSystem`.
+• Add basic test to ensure `AngelSystem` can be instantiated and registered with `SystemsManager` without error (actual system logic in 9-A).
+
+Task 9-S-3
+Developer @dev-carol
+Files allowed:
+└─ agent_world/scenarios/__init__.py
+└─ agent_world/scenarios/base_scenario.py
+└─ agent_world/utils/cli/commands.py
+└─ tests/scenarios/test_scenario_stubs.py
+Outline:
+• Create `agent_world/scenarios/` directory and `__init__.py`.
+• Create `agent_world/scenarios/base_scenario.py` with an abstract `BaseScenario` class:
+    ```python
+    from abc import ABC, abstractmethod
+    from typing import Any
+    class BaseScenario(ABC):
+        @abstractmethod
+        def setup(self, world: Any) -> None: pass
+        @abstractmethod
+        def get_name(self) -> str: pass
+    ```
+• Add a stub for a `/scenario <name>` CLI command in `commands.py` (parsing only for now).
+• Test that `BaseScenario` can be imported.
+
+### Wave 9-A (parallel once Wave 9-S merged)
+
+Task 9-A-1
+Developer @dev-dave
+Files allowed:
+└─ agent_world/main.py
+└─ agent_world/scenarios/default_pickup_scenario.py
+└─ agent_world/utils/cli/commands.py
+└─ tests/scenarios/test_pickup_scenario_command.py
+Outline:
+• Create `agent_world/scenarios/default_pickup_scenario.py` implementing `BaseScenario`.
+• Move the current hardcoded "SCENARIO FOR ABILITY GENERATION & PICKUP" logic from `main.py` into this new `DefaultPickupScenario.setup()` method.
+• Modify `main.py` to call `DefaultPickupScenario().setup(world)` by default if no scenario is specified via CLI.
+• Implement the `/scenario <name>` CLI command in `commands.py` to load and run scenarios from `agent_world/scenarios/` (for now, just support "default_pickup").
+• Test that the default scenario still runs and the `/scenario default_pickup` command works.
+
+Task 9-A-2
+Developer @dev-ellen
+Files allowed:
+└─ agent_world/main.py
+└─ agent_world/ai/llm/llm_manager.py
+└─ agent_world/systems/ability/ability_system.py
+└─ agent_world/persistence/event_log.py
+└─ agent_world/config.py
+└─ tests/core/test_centralized_config_usage.py
+Outline:
+• Refactor `main.py` bootstrap, `LLMManager`, `AbilitySystem`, and `persistence.event_log._log_retention_bytes` to import and use the centralized `agent_world.config` module/objects for accessing configuration values instead of loading `config.yaml` directly.
+• Test that configurations (e.g., LLM models, ability paths, log retention) are correctly applied from the centralized config.
+
+Task 9-A-3
+Developer @dev-frank
+Files allowed:
+└─ agent_world/ai/angel/system.py
+└─ agent_world/systems/ai/action_execution_system.py
+└─ agent_world/main.py
+└─ tests/angel/test_angel_system_integration.py
+Outline:
+• Modify `AngelSystem` to be a proper system: register it with `SystemsManager` in `main.py::bootstrap`.
+• Implement `AngelSystem.update()`: This method will likely be empty or handle internal state updates if any; for now, it can be a no-op.
+• Implement `AngelSystem.process_pending_requests()`: This method will contain the core logic currently in `generate_and_grant`, potentially managing an internal queue of generation requests. For now, it can be a stub.
+• Modify `main.py` loop: if `world.paused_for_angel` is True, call `world.angel_system_instance.process_pending_requests()` instead of the current direct call from `ActionExecutionSystem`.
+• Modify `ActionExecutionSystem`: instead of directly calling `get_angel_system().generate_and_grant()`, it should now enqueue a request to the `AngelSystem` (e.g. add to an internal queue on `AngelSystem` instance or emit an event for `AngelSystem` to pick up). For this task, a simple direct call to a new method like `angel_system.queue_request(actor, description)` is sufficient.
+• Test that `AngelSystem` is registered and `paused_for_angel` logic in `main.py` correctly calls `process_pending_requests` (even if it's a stub). Test that `GenerateAbilityAction` correctly queues a request with the AngelSystem.
+
+Task 9-A-4
+Developer @dev-grace
+Files allowed:
+└─ agent_world/systems/ai/actions.py
+└─ agent_world/ai/llm/prompt_builder.py
+└─ agent_world/utils/cli/commands.py
+└─ tests/core/test_player_id_removal.py
+Outline:
+• Remove the `PLAYER_ID = 0` constant from `systems/ai/actions.py`.
+• Remove the line `Player (ID {PLAYER_ID}) is controlled by a human.` from `ai/llm/prompt_builder.py`.
+• Remove the logic in `utils/cli/commands.py::spawn()` that ensures `PLAYER_ID` has components.
+• Ensure tests still pass or are updated to reflect no specific player entity. Focus on AI agent interactions.
+
+Task 9-A-5
+Developer @dev-heidi
+Files allowed:
+└─ agent_world/main.py
+└─ agent_world/ai/llm/llm_manager.py
+└─ agent_world/ai/llm/prompt_builder.py
+└─ agent_world/systems/movement/physics_system.py
+└─ agent_world/systems/ability/ability_system.py
+└─ agent_world/systems/ability/builtin/ranged.py
+└─ agent_world/systems/ai/action_execution_system.py
+└─ agent_world/systems/ai/angel/generator.py
+└─ agent_world/systems/ai/behavior_tree.py
+└─ agent_world/utils/cli/commands.py
+└─ tests/core/test_logging_standardization.py
+Outline:
+• Systematically replace debug `print()` statements in the listed files (and any other critical paths identified) with `logging.info()`, `logging.debug()`, or `logging.warning()` as appropriate.
+• Configure basic logging in `main.py` (e.g., `logging.basicConfig(level=logging.INFO)`).
+• Ensure tests still pass and critical information is now logged via the `logging` module. The very verbose debug prints in `prompt_builder` or `LLMManager` should become `logging.debug()`.
+
+Task 9-A-6
+Developer @dev-ivan
+Files allowed:
+└─ agent_world/systems/ai/ai_reasoning_system.py
+└─ agent_world/main.py
+└─ tests/systems/ai/test_action_flow_streamlining.py
+Outline:
+• Evaluate the `world.raw_actions_with_actor` and `world.action_queue` flow.
+• If a simplification is straightforward (e.g., `AIReasoningSystem` and `BehaviorTreeSystem` directly enqueue to `world.action_queue`), implement it.
+• If not, document the rationale for the current two-step process. For this task, a primary goal is to ensure `AIReasoningSystem` and `BehaviorTreeSystem` directly add parsed `Action` objects (not raw strings) to the `ActionQueue`. The `world.raw_actions_with_actor` list can be removed if actions are parsed within these AI systems before queueing.
+• Update `main.py` loop to remove the transfer from `raw_actions_with_actor` to `action_queue` if it's now direct.
+• Test the action processing flow.
+
+Task 9-A-7
+Developer @dev-bob
+Files allowed:
+└─ agent_world/main.py
+└─ agent_world/systems/combat/combat_system.py
+└─ agent_world/systems/interaction/crafting.py
+└─ agent_world/persistence/event_log.py
+└─ tests/persistence/test_unified_event_logging.py
+Outline:
+• Modify `CombatSystem` and `CraftingSystem` to use `agent_world.persistence.event_log.append_event` to log their significant events (e.g., attacks, deaths, crafts) to the world's persistent event log (`world.persistent_event_log_path`) instead of their local `event_log` lists.
+• Remove the local `event_log` lists from these systems and their initialization in `main.py`.
+• Ensure event data structures are consistent and useful for replay.
+• Test that combat and crafting events are now written to the persistent log.
+
+### Wave 9-B (serial follow-ups after Wave 9-A)
+
+Task 9-B-1
+Developer @dev-carol
+Files allowed:
+└─ agent_world/ai/llm/prompt_builder.py
+└─ tests/ai/test_generalized_prompting.py
+Outline:
+• Begin refactoring the "CRITICAL SITUATION" logic in `agent_world/ai/llm/prompt_builder.py`.
+• Identify the core elements of the critical advice (obstacle detection, goal item visibility) and make the advice generation less tied to the specific coordinates/IDs of the `DefaultPickupScenario`.
+• The goal is not to fully generalize all AI yet, but to make this specific prompt section more adaptable if scenario parameters change.
+• Test that prompts are still generated correctly for the default scenario and that critical advice adapts if key elements (like obstacle position) are programmatically changed.
+
+Task 9-B-2
+Developer @dev-alice
+Files allowed:
+└─ PROJECT_DESIGN.md
+Outline:
+• Update `PROJECT_DESIGN.md` based on the changes from Phases 8 and 9. Specifically:
+    • Reflect the `PerceptionCacheComponent.visible_ability_uses` field.
+    • Update `config.yaml` skeleton (Sec 12) with all newly added keys.
+    • Clarify AngelSystem's integration pattern if it's now registered with `SystemsManager`.
+    • Note the shift to centralized `config.py`.
+    • Update event logging section to reflect unified persistent logging.
+    • Clarify the role of `RestrictedPython` if its non-use for Angel's conceptual testing is now the clear state.
+    • Remove any mentions of `PLAYER_ID`.
+
+This Phase 9 aims to significantly improve the codebase's health, align it more closely with the PDD where appropriate at this stage, and prepare it for the more complex feature work required to fully realize the "vFuture" vision.
