@@ -131,6 +131,18 @@ class AngelSystem:
             })
             return {"status": "failure", "reason": str(e)}
 
+    # ------------------------------------------------------------------
+    # Prompt building stub
+    # ------------------------------------------------------------------
+    def _build_angel_code_generation_prompt(
+        self,
+        description: str,
+        world_constraints: dict,
+        code_scaffolds: dict,
+    ) -> str:
+        """Return an LLM prompt for generating ability code."""
+        return ""
+
 
 def get_angel_system(world: Any) -> AngelSystem:
     """Return existing AngelSystem instance on world or create one."""
