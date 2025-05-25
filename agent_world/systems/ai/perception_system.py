@@ -46,6 +46,8 @@ class EventPerceptionSystem:
                     log = EventLog()
                     cm.add_component(entity_id, log)
                 log.recent.append(event)
+                # Track visible ability uses on the PerceptionCache itself
+                cache.visible_ability_uses.append(event)
 
 
 __all__ = ["EventPerceptionSystem"]
