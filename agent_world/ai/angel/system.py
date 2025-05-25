@@ -8,6 +8,7 @@ import logging
 import re
 
 from . import generator as angel_generator
+from . import templates
 from .vault_index import get_vault_index
 from ...core.components.known_abilities import KnownAbilitiesComponent
 from ...core.components.ai_state import AIState
@@ -88,16 +89,37 @@ class AngelSystem:
             return {"status": "success", "ability_class_name": vault_match}
 
         llm = getattr(self.world, "llm_manager_instance", None)
+        stub_code = None
         if llm is not None:
-            llm.request(f"Generate ability code for: {description}")
-        append_event(dest, tick, ANGEL_ACTION, {
-            "stage": "llm_attempt",
-            "agent_id": agent_id,
-            "description": description,
-        })
+            prompt = self._build_angel_code_generation_prompt(
+                description,
+                templates.get_world_constraints_for_angel(),
+                templates.get_code_scaffolds_for_angel(),
+            )
+            try:
+                stub_code = llm.request(
+                    prompt,
+                    self.world,
+                    model=getattr(llm, "angel_generation_model", None),
+                )
+            except TypeError:
+                try:
+                    stub_code = llm.request(prompt, self.world)
+                except TypeError:
+                    stub_code = llm.request(prompt)
+
+        append_event(
+            dest,
+            tick,
+            ANGEL_ACTION,
+            {"stage": "llm_attempt", "agent_id": agent_id, "description": description},
+        )
 
         try:
-            path = angel_generator.generate_ability(description)
+            if stub_code is None:
+                path = angel_generator.generate_ability(description)
+            else:
+                path = angel_generator.generate_ability(description, stub_code=stub_code)
             class_name = None
             try:
                 text = path.read_text(encoding="utf-8")
