@@ -317,6 +317,11 @@ def follow(world: Any, entity_id_str: str | None, state: Dict[str, Any]) -> None
     print(f"Following entity {entity_id}")
 
 
+def scenario(world: Any, name: str) -> None:
+    """Placeholder for loading and running a scenario."""
+    print(f"Scenario command received for '{name}' (stub).")
+
+
 def help_command(state: Dict[str, Any]) -> None:
     print("\nAvailable commands:")
     print("  /help                - Show this help message.")
@@ -376,6 +381,9 @@ def execute(command: str, args: list[str], world: Any, state: Dict[str, Any]) ->
     elif cmd_lower == "follow" and args:
         follow(world, args[0], state)
         # return_value remains None
+    elif cmd_lower == "scenario" and args:
+        scenario(world, args[0])
+        # return_value remains None
     elif cmd_lower == "quit":
         state["running"] = False
         print("Quit command received. Shutting down...")
@@ -388,5 +396,5 @@ def execute(command: str, args: list[str], world: Any, state: Dict[str, Any]) ->
 
 __all__ = [
     "pause", "step", "save", "reload_abilities", "profile", "spawn", "debug",
-    "gui", "fps", "follow", "help_command", "execute",
+    "gui", "fps", "follow", "scenario", "help_command", "execute",
 ]
