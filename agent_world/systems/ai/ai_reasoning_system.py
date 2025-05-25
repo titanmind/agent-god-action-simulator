@@ -84,6 +84,17 @@ class AIReasoningSystem:
             if ai_comp is None:
                 continue
 
+            if ai_comp.last_bt_move_failed or ai_comp.last_error:
+                ai_comp.plan_step_retries += 1
+                ai_comp.last_bt_move_failed = False
+                ai_comp.last_error = None
+            if ai_comp.plan_step_retries > ai_comp.max_plan_step_retries:
+                ai_comp.current_plan.clear()
+                ai_comp.plan_step_retries = 0
+                ai_comp.pending_llm_prompt_id = None
+                ai_comp.last_plan_generation_tick = tm.tick_counter
+                continue
+
             role_comp = cm.get_component(entity_id, RoleComponent)
             if role_comp and not role_comp.uses_llm:
                 if self.behavior_tree:
@@ -98,8 +109,15 @@ class AIReasoningSystem:
                         self.action_tuples_list.append((entity_id, action))
                 continue
 
-            if ai_comp.goals and not ai_comp.current_plan:
-                ai_comp.current_plan = self.planner.create_plan(entity_id, ai_comp.goals, self.world)
+            if (
+                ai_comp.goals
+                and not ai_comp.current_plan
+                and ai_comp.last_plan_generation_tick != tm.tick_counter
+            ):
+                ai_comp.current_plan = self.planner.create_plan(
+                    entity_id, ai_comp.goals, self.world
+                )
+                ai_comp.last_plan_generation_tick = tm.tick_counter
 
             bypass_cooldown = False
             if ai_comp.needs_immediate_rethink:
@@ -118,10 +136,12 @@ class AIReasoningSystem:
             llm_attempt_made_or_resolved = False # Track if we interacted with LLM this tick
 
             plan_hint: str | None = None
+            obstacle_prompt: str | None = None
             if ai_comp.current_plan:
                 step = ai_comp.current_plan[0]
                 direct_actions = {"MOVE", "ATTACK", "LOG", "IDLE", "GENERATE_ABILITY", "USE_ABILITY", "PICKUP"}
-                if step.action.upper() in direct_actions:
+                step_type = (step.step_type or step.action).upper()
+                if step_type in direct_actions:
                     part = step.parameters.get("arg")
                     if part is not None:
                         final_action_to_take = f"{step.action} {part}".strip()
@@ -130,6 +150,14 @@ class AIReasoningSystem:
                     else:
                         final_action_to_take = step.action
                     ai_comp.current_plan.pop(0)
+                    ai_comp.plan_step_retries = 0
+                elif step_type in {"DEAL_WITH_OBSTACLE", "GENERATE_ABILITY_FOR_OBSTACLE"}:
+                    obs = step.parameters.get("obstacle")
+                    dest = step.parameters.get("goal") or step.target
+                    obstacle_prompt = (
+                        f"Obstacle at {obs} blocks your path to {dest}. How do you proceed? "
+                        "Consider using/generating an ability."
+                    )
                 else:
                     plan_hint = step.action
                     if step.target is not None:
@@ -142,7 +170,9 @@ class AIReasoningSystem:
                 if self.llm.mode == "live":
                     llm_attempt_made_or_resolved = True
                     prompt = build_prompt(entity_id, self.world)
-                    if plan_hint:
+                    if obstacle_prompt:
+                        prompt += f"\n{obstacle_prompt}"
+                    elif plan_hint:
                         prompt += f"\n{plan_hint}"
                     if role_comp and not role_comp.can_request_abilities:
                         prompt = "\n".join(
@@ -184,7 +214,9 @@ class AIReasoningSystem:
                 elif self.llm.mode == "echo": # Handle echo mode separately if not covered by "live"
                     llm_attempt_made_or_resolved = True
                     prompt = build_prompt(entity_id, self.world)
-                    if plan_hint:
+                    if obstacle_prompt:
+                        prompt += f"\n{obstacle_prompt}"
+                    elif plan_hint:
                         prompt += f"\n{plan_hint}"
                     if role_comp and not role_comp.can_request_abilities:
                         prompt = "\n".join(
