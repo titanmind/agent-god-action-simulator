@@ -78,8 +78,11 @@ def bootstrap(config_path: str | Path = Path("config.yaml")) -> World:
     world_cfg = cfg.get("world", {})
     size = tuple(world_cfg.get("size", [100, 100]))
     tick_rate = float(world_cfg.get("tick_rate", 10))
+    paused_timeout = int(world_cfg.get("paused_for_angel_timeout_seconds", 60))
 
     world = World(size)
+    world.paused_for_angel_timeout_seconds = paused_timeout
+    print(f"[Bootstrap] Angel pause timeout set to {paused_timeout}s")
     world.entity_manager = EntityManager()
     world.component_manager = ComponentManager()
     world.time_manager = TimeManager(tick_rate)
@@ -94,7 +97,19 @@ def bootstrap(config_path: str | Path = Path("config.yaml")) -> World:
     llm_cfg = cfg.get("llm", {})
     llm_api_key = os.getenv("OPENROUTER_API_KEY") or llm_cfg.get("api_key")
     llm_model = os.getenv("OPENROUTER_MODEL") or llm_cfg.get("model")
+    agent_decision_model = llm_cfg.get("agent_decision_model", "default/model")
+    angel_generation_model = llm_cfg.get("angel_generation_model", "default/model")
     llm = LLMManager(api_key=llm_api_key, model=llm_model)
+    llm.agent_decision_model = agent_decision_model
+    llm.angel_generation_model = angel_generation_model
+    print(
+        f"[Bootstrap] LLM decision model: {agent_decision_model}, Angel model: {angel_generation_model}"
+    )
+
+    paths_cfg = cfg.get("paths")
+    if paths_cfg:
+        world.paths = paths_cfg
+        print("[Bootstrap] Custom paths configuration loaded")
     world.llm_manager_instance = llm
     if llm.mode == "live" and world.llm_manager_instance and not llm.offline:
         world.llm_manager_instance.start_processing_loop(world)
