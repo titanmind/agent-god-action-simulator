@@ -4,6 +4,7 @@ from __future__ import annotations
 """Built-in ranged combat ability."""
 
 from typing import Any, Optional
+import logging
 
 from agent_world.abilities.base import Ability
 from agent_world.core.components.position import Position
@@ -11,6 +12,8 @@ from agent_world.core.components.health import Health # Added for target validat
 from agent_world.core.components.inventory import Inventory
 from agent_world.systems.combat.combat_system import CombatSystem
 from agent_world.systems.perception.line_of_sight import has_line_of_sight
+
+logger = logging.getLogger(__name__)
 
 class ArrowShot(Ability):
     """Shoot the nearest visible target or a specified target and consume one ammo item."""
@@ -63,8 +66,11 @@ class ArrowShot(Ability):
 
         inv = cm.get_component(caster_id, Inventory)
         caster_pos = cm.get_component(caster_id, Position)
-        if inv is None or caster_pos is None or not inv.items: # Check for ammo
-            print(f"[Ability ArrowShot] Agent {caster_id} cannot use ArrowShot: missing inventory, position, or ammo.")
+        if inv is None or caster_pos is None or not inv.items:  # Check for ammo
+            logger.warning(
+                "[Ability ArrowShot] Agent %s cannot use ArrowShot: missing inventory, position, or ammo.",
+                caster_id,
+            )
             return
 
         actual_target_to_attack = target_id
@@ -81,7 +87,10 @@ class ArrowShot(Ability):
                         break
         
         if actual_target_to_attack is None:
-            print(f"[Ability ArrowShot] Agent {caster_id} could not find a valid target for ranged attack.")
+            logger.info(
+                "[Ability ArrowShot] Agent %s could not find a valid target for ranged attack.",
+                caster_id,
+            )
             return
 
         # Ensure the final target is valid and in LOS before attacking
@@ -91,7 +100,11 @@ class ArrowShot(Ability):
         if not (em.has_entity(actual_target_to_attack) and 
                 target_pos and target_health and target_health.cur > 0 and
                 has_line_of_sight(caster_pos, target_pos, self.range_val)):
-            print(f"[Ability ArrowShot] Agent {caster_id} target {actual_target_to_attack} became invalid or out of LOS before attack.")
+            logger.warning(
+                "[Ability ArrowShot] Agent %s target %s became invalid or out of LOS before attack.",
+                caster_id,
+                actual_target_to_attack,
+            )
             return
 
         inv.items.pop(0) # Consume one ammo
@@ -104,10 +117,14 @@ class ArrowShot(Ability):
                     combat_system = sys_instance
                     break
         if combat_system is None:
-             print("[Ability ArrowShot] Warning: CombatSystem not found; creating new instance.")
+             logger.warning("[Ability ArrowShot] Warning: CombatSystem not found; creating new instance.")
              combat_system = CombatSystem(world) # Pass world here
 
-        print(f"[Ability ArrowShot] Agent {caster_id} shooting at target {actual_target_to_attack}.")
+        logger.info(
+            "[Ability ArrowShot] Agent %s shooting at target %s.",
+            caster_id,
+            actual_target_to_attack,
+        )
         combat_system.attack(caster_id, actual_target_to_attack) # Default damage type is MELEE, can specify if ranged has own type
 
 __all__ = ["ArrowShot"]

@@ -9,6 +9,7 @@ import threading
 import time
 import os
 import asyncio
+import logging
 from agent_world.ai.angel.generator import GENERATED_DIR as ABILITIES_GENERATED_DIR # Add this import
 import shutil # Add this import
 
@@ -59,6 +60,9 @@ from .systems.movement.pathfinding import set_obstacles, clear_obstacles # For s
 DEFAULT_SAVE_PATH = Path("saves/world_state.json.gz")
 AUTO_SAVE_INTERVAL = 60.0
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 
 def bootstrap(config_path: str | Path = Path("config.yaml")) -> World:
     env_path = Path(".env")
@@ -73,7 +77,10 @@ def bootstrap(config_path: str | Path = Path("config.yaml")) -> World:
         if project_root_config.is_file():
             with open(project_root_config, "r", encoding="utf-8") as fh: cfg = yaml.safe_load(fh) or {}
         else:
-            print(f"Warning: Config file '{config_path}' (and at project root) not found. Using defaults.")
+            logger.warning(
+                "Config file '%s' (and at project root) not found. Using defaults.",
+                config_path,
+            )
 
     world_cfg = cfg.get("world", {})
     size = tuple(world_cfg.get("size", [100, 100]))
@@ -82,14 +89,17 @@ def bootstrap(config_path: str | Path = Path("config.yaml")) -> World:
 
     world = World(size)
     world.paused_for_angel_timeout_seconds = paused_timeout
-    print(f"[Bootstrap] Angel pause timeout set to {paused_timeout}s")
+    logger.info("[Bootstrap] Angel pause timeout set to %ss", paused_timeout)
     world.entity_manager = EntityManager()
     world.component_manager = ComponentManager()
     world.time_manager = TimeManager(tick_rate)
     world.spatial_index = SpatialGrid(cell_size=1)
 
     world.action_queue = ActionQueue()
-    print(f"[Bootstrap] world.action_queue initialized: {world.action_queue is not None}")
+    logger.debug(
+        "[Bootstrap] world.action_queue initialized: %s",
+        world.action_queue is not None,
+    )
     world.raw_actions_with_actor = []
     world.fps_enabled = False
     world.gui_enabled = True # GUI enabled by default
@@ -105,14 +115,16 @@ def bootstrap(config_path: str | Path = Path("config.yaml")) -> World:
         agent_decision_model=agent_decision_model,
         angel_generation_model=angel_generation_model,
     )
-    print(
-        f"[Bootstrap] LLM decision model: {llm.agent_decision_model}, Angel model: {llm.angel_generation_model}"
+    logger.info(
+        "[Bootstrap] LLM decision model: %s, Angel model: %s",
+        llm.agent_decision_model,
+        llm.angel_generation_model,
     )
 
     paths_cfg = cfg.get("paths")
     if paths_cfg:
         world.paths = paths_cfg
-        print("[Bootstrap] Custom paths configuration loaded")
+        logger.info("[Bootstrap] Custom paths configuration loaded")
     world.llm_manager_instance = llm
     if llm.mode == "live" and world.llm_manager_instance and not llm.offline:
         world.llm_manager_instance.start_processing_loop(world)
@@ -159,11 +171,11 @@ def bootstrap(config_path: str | Path = Path("config.yaml")) -> World:
         action_execution_system_instance = ActionExecutionSystem(world, world.action_queue, combat_sys)
         sm.register(action_execution_system_instance)
     else:
-        print("[Bootstrap CRITICAL] ActionExecutionSystem is None after import attempt.")
+        logger.critical("[Bootstrap CRITICAL] ActionExecutionSystem is None after import attempt.")
 
 
     world.generate_resources(seed=12345)
-    print(f"[Bootstrap] Generated resources on the map.")
+    logger.info("[Bootstrap] Generated resources on the map.")
 
     return world
 
@@ -181,7 +193,7 @@ def load_or_bootstrap(
     world_shell = bootstrap(actual_config_path) 
 
     if path.is_file():
-        print(f"Save file found at {path}. Attempting to load state.")
+        logger.info("Save file found at %s. Attempting to load state.", path)
         try:
             loaded_world_from_file = load_world(path)
             
@@ -192,7 +204,10 @@ def load_or_bootstrap(
                  world_shell.time_manager.tick_counter = loaded_world_from_file.time_manager.tick_counter
             if hasattr(loaded_world_from_file, 'gui_enabled'):
                 world_shell.gui_enabled = loaded_world_from_file.gui_enabled
-                print(f"[Load] GUI enabled state loaded from save: {world_shell.gui_enabled}")
+                logger.debug(
+                    "[Load] GUI enabled state loaded from save: %s",
+                    world_shell.gui_enabled,
+                )
             
             world_shell.spatial_index._cells.clear() 
             world_shell.spatial_index._entity_pos.clear()
@@ -203,10 +218,14 @@ def load_or_bootstrap(
                     if pos_comp is not None: batch.append((eid_int, (pos_comp.x, pos_comp.y)))
             if batch: world_shell.spatial_index.insert_many(batch)
             
-            print(f"Successfully loaded state from {path} into world structure.")
+            logger.info("Successfully loaded state from %s into world structure.", path)
             return world_shell
         except Exception as exc:
-            print(f"Error loading world from {path}: {exc}. Using freshly bootstrapped world.")
+            logger.warning(
+                "Error loading world from %s: %s. Using freshly bootstrapped world.",
+                path,
+                exc,
+            )
             return world_shell
     else:
         return world_shell
@@ -220,20 +239,23 @@ def start_autosave(
     if not path.parent.exists():
         try: path.parent.mkdir(parents=True, exist_ok=True)
         except OSError as e:
-            print(f"Error creating save directory {path.parent}: {e}. Auto-save disabled.")
+            logger.error("Error creating save directory %s: %s. Auto-save disabled.", path.parent, e)
             return None
     def _loop() -> None:
         while True:
             time.sleep(interval) 
             if not world.time_manager: continue 
-            try: save_world(world, path)
-            except Exception as exc: print(f"Auto-save failed: {exc}")
+            try:
+                save_world(world, path)
+            except Exception as exc:
+                logger.warning("Auto-save failed: %s", exc)
     t = threading.Thread(target=_loop, daemon=True, name="AutoSaveThread")
     t.start()
     inc_save_path = path.parent / "increments"
     if not inc_save_path.exists():
         try: inc_save_path.mkdir(parents=True, exist_ok=True)
-        except OSError as e: print(f"Error creating incremental save directory {inc_save_path}: {e}.")
+        except OSError as e:
+            logger.error("Error creating incremental save directory %s: %s", inc_save_path, e)
     else:
         start_incremental_save(world, inc_save_path) 
     return t
@@ -248,7 +270,7 @@ def main() -> None:
                     item.unlink()
                 elif item.is_dir(): # Should not happen, but good to be robust
                     shutil.rmtree(item)
-        print(f"[Main Init] Cleared old files from {ABILITIES_GENERATED_DIR}")
+        logger.info("[Main Init] Cleared old files from %s", ABILITIES_GENERATED_DIR)
     # +++ END CLEAN +++
     pygame.init()
     pygame.font.init()
@@ -262,7 +284,7 @@ def main() -> None:
                 world.raw_actions_with_actor is not None, world.systems_manager,
                 world.entity_manager, world.component_manager, world.spatial_index,
                 world.llm_manager_instance, world.ability_system_instance]): # Added ability_system_instance check
-        print("Critical Error: World not properly initialized! Exiting.")
+        logger.critical("Critical Error: World not properly initialized! Exiting.")
         if pygame.get_init(): pygame.quit()
         return
 
@@ -273,13 +295,19 @@ def main() -> None:
     actual_renderer = Renderer()
     # world.ability_system_instance is now set during bootstrap and load_or_bootstrap if AbilitySystem is registered.
     if not world.ability_system_instance:
-        print("[Main WARNING] AbilitySystem instance not found on world object after bootstrap/load!")
+        logger.warning(
+            "[Main WARNING] AbilitySystem instance not found on world object after bootstrap/load!"
+        )
 
 
     world_center_x = world.size[0] // 2
     world_center_y = world.size[1] // 2
     actual_renderer.set_camera_center(float(world_center_x), float(world_center_y))
-    print(f"Initial camera center set to: ({actual_renderer.camera_world_x}, {actual_renderer.camera_world_y})")
+    logger.debug(
+        "Initial camera center set to: (%s, %s)",
+        actual_renderer.camera_world_x,
+        actual_renderer.camera_world_y,
+    )
 
     initial_spawn_state = {"renderer": actual_renderer} # For GUI updates during spawn
 
@@ -298,40 +326,67 @@ def main() -> None:
         ai_state_agent = world.component_manager.get_component(agent_id_scenario, AIState)
         if ai_state_agent:
             ai_state_agent.goals = [f"Acquire item {item_id_scenario}"] 
-            print(f"[Scenario] Agent {agent_id_scenario} at ({agent_start_x},{agent_start_y}) given goal: {ai_state_agent.goals}")
+            logger.info(
+                "[Scenario] Agent %s at (%s,%s) given goal: %s",
+                agent_id_scenario,
+                agent_start_x,
+                agent_start_y,
+                ai_state_agent.goals,
+            )
         item_pos_comp = world.component_manager.get_component(item_id_scenario, Position)
         if item_pos_comp:
-             print(f"[Scenario] Item {item_id_scenario} spawned at ({item_pos_comp.x},{item_pos_comp.y}) for Agent {agent_id_scenario}.")
+             logger.info(
+                 "[Scenario] Item %s spawned at (%s,%s) for Agent %s.",
+                 item_id_scenario,
+                 item_pos_comp.x,
+                 item_pos_comp.y,
+                 agent_id_scenario,
+             )
         else:
-             print(f"[Scenario WARNING] Item {item_id_scenario} spawned but has no Position component!")
+             logger.warning(
+                 "[Scenario WARNING] Item %s spawned but has no Position component!",
+                 item_id_scenario,
+             )
 
     obstacle_pos = (agent_start_x, agent_start_y - 1) # Between agent and item
     set_obstacles([obstacle_pos])
-    print(f"[Scenario] Obstacle placed at {obstacle_pos}")
+    logger.info("[Scenario] Obstacle placed at %s", obstacle_pos)
     # --- END SCENARIO ---
 
     # +++ ADD THIS DEBUG BLOCK in main() +++
-    print(f" agent id scenario: {agent_id_scenario}")
-    print(f" world component manager: {world.component_manager}")
+    logger.debug(" agent id scenario: %s", agent_id_scenario)
+    logger.debug(" world component manager: %s", world.component_manager)
     if agent_id_scenario and world.component_manager:
         final_check_ai_state = world.component_manager.get_component(agent_id_scenario, AIState)
         if final_check_ai_state:
-            print(f"[[[[[ PRE-LOOP CHECK (main.py) Agent {agent_id_scenario} AIState ID: {id(final_check_ai_state)}, Goals: {final_check_ai_state.goals} ]]]]]")
+            logger.debug(
+                "[[[[[ PRE-LOOP CHECK (main.py) Agent %s AIState ID: %s, Goals: %s ]]]]]",
+                agent_id_scenario,
+                id(final_check_ai_state),
+                final_check_ai_state.goals,
+            )
         else:
-            print(f"[[[[[ PRE-LOOP CHECK (main.py) Agent {agent_id_scenario} AIState NOT FOUND ]]]]]")
+            logger.debug(
+                "[[[[[ PRE-LOOP CHECK (main.py) Agent %s AIState NOT FOUND ]]]]]",
+                agent_id_scenario,
+            )
     # +++ END DEBUG BLOCK +++
 
 
     if world.gui_enabled and actual_renderer:
         install_gui_rendering_hook(world, actual_renderer)
-        print("[Main] GUI rendering hook installed on startup as world.gui_enabled is True.")
+        logger.info(
+            "[Main] GUI rendering hook installed on startup as world.gui_enabled is True."
+        )
 
     paused = False
     step_once = False
     running = True
     angel_pause_start: float | None = None
 
-    print("\nApplication started. CLI is active. Type /help for commands, or /gui to toggle display.")
+    logger.info(
+        "Application started. CLI is active. Type /help for commands, or /gui to toggle display."
+    )
 
     # last_debug_print_time = time.time() # Keep if needed for other debug
     clock = pygame.time.Clock()
@@ -346,8 +401,9 @@ def main() -> None:
                     and time.time() - angel_pause_start
                     > world.paused_for_angel_timeout_seconds
                 ):
-                    print(
-                        f"[Main WARNING] Angel pause exceeded {world.paused_for_angel_timeout_seconds}s; resuming."
+                    logger.warning(
+                        "[Main WARNING] Angel pause exceeded %ss; resuming.",
+                        world.paused_for_angel_timeout_seconds,
                     )
                     world.paused_for_angel = False
                     angel_pause_start = None
@@ -389,7 +445,10 @@ def main() -> None:
                        world.action_queue.enqueue_raw(actor_id, action_text)
                     world.raw_actions_with_actor.clear()
                 elif world.raw_actions_with_actor and world.action_queue is None:
-                    print(f"[Tick {tm.tick_counter}] MainLoop: CRITICAL - world.action_queue is None.")
+                    logger.critical(
+                        "[Tick %s] MainLoop: CRITICAL - world.action_queue is None.",
+                        tm.tick_counter,
+                    )
 
                 if not world.paused_for_angel:
                     if world.systems_manager:
@@ -411,10 +470,10 @@ def main() -> None:
             clock.tick(60)
 
     except KeyboardInterrupt:
-        print("\nKeyboardInterrupt caught. Shutting down...")
+        logger.info("KeyboardInterrupt caught. Shutting down...")
         running = False
     finally:
-        print("Application shutting down...")
+        logger.info("Application shutting down...")
         stop_cli_thread()
         if cli_input_thread and cli_input_thread.is_alive():
              cli_input_thread.join(timeout=1.0)

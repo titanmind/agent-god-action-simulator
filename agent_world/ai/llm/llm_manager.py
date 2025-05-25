@@ -9,8 +9,9 @@ import socket
 import threading
 import uuid
 from pathlib import Path
-from typing import Any, Tuple, Dict 
-import json # For pretty printing JSON response
+from typing import Any, Tuple, Dict
+import json  # For pretty printing JSON response
+import logging
 
 import httpx
 import yaml
@@ -21,6 +22,8 @@ from ...persistence.event_log import (
 )
 
 from .cache import LLMCache
+
+logger = logging.getLogger(__name__)
 
 
 class LLMManager:
@@ -70,23 +73,32 @@ class LLMManager:
         self.offline = self.mode != "live"
         if self.mode == "live":
             if not self.api_key or not self.model:
-                print("[LLMManager] API key or model missing. Forcing offline mode.")
+                logger.warning("[LLMManager] API key or model missing. Forcing offline mode.")
                 self.offline = True
-                self.mode = "offline" # Explicitly set mode to offline
+                self.mode = "offline"  # Explicitly set mode to offline
             else:
                 try:
                     # Test connectivity before declaring online
-                    socket.gethostbyname("openrouter.ai") 
+                    socket.gethostbyname("openrouter.ai")
                     # MODIFIED: Moved print statement to after successful offline check
                 except OSError:
-                    print("[LLMManager] Network connectivity to openrouter.ai failed. Forcing offline mode.")
+                    logger.warning(
+                        "[LLMManager] Network connectivity to openrouter.ai failed. Forcing offline mode."
+                    )
                     self.offline = True
-                    self.mode = "offline" # Explicitly set mode to offline
+                    self.mode = "offline"  # Explicitly set mode to offline
         
-        if self.offline and self.mode == "live": # If forced offline but config was live
-             print(f"[LLMManager] WARNING: LLM mode was 'live' but forced to '{self.mode}' due to missing requirements or network issues.")
-        elif not self.offline and self.mode == "live": # Only print if truly online
-             print(f"[LLMManager] LLM online: {self.model} (API Key Present: {'Yes' if self.api_key else 'No'})")
+        if self.offline and self.mode == "live":  # If forced offline but config was live
+            logger.warning(
+                "[LLMManager] WARNING: LLM mode was 'live' but forced to '%s' due to missing requirements or network issues.",
+                self.mode,
+            )
+        elif not self.offline and self.mode == "live":  # Only print if truly online
+            logger.info(
+                "[LLMManager] LLM online: %s (API Key Present: %s)",
+                self.model,
+                "Yes" if self.api_key else "No",
+            )
 
 
         self.cache = LLMCache(capacity=cache_size)
@@ -106,11 +118,13 @@ class LLMManager:
         world.async_llm_responses[prompt_id] = fut
         try:
             self.queue.put_nowait((prompt, fut, prompt_id))
-            # --- MODIFIED LOGGING: Simplified as prompt_builder logs the full prompt ---
-            print(f"[LLMManager DEBUG _add_future_and_queue_request] Queued prompt_id {prompt_id}.")
+            logger.debug(
+                "[LLMManager DEBUG _add_future_and_queue_request] Queued prompt_id %s.",
+                prompt_id,
+            )
             # --- END MODIFIED LOGGING ---
         except asyncio.QueueFull:
-            print(f"[LLMManager ERROR] Queue full. Failed to queue prompt_id {prompt_id}.")
+            logger.error("[LLMManager ERROR] Queue full. Failed to queue prompt_id %s.", prompt_id)
             if world.async_llm_responses.get(prompt_id) == fut:
                 world.async_llm_responses.pop(prompt_id, None)
             if not fut.done():
@@ -132,20 +146,31 @@ class LLMManager:
         cached = self.cache.get(prompt)
         if cached is not None:
             # --- MODIFIED LOGGING: Indication of cache hit ---
-            print(f"[LLMManager DEBUG Cache Hit] Returning cached response for prompt (first 70 chars): {prompt[:70].replace(chr(10), '//')}... -> '{cached[:100].replace(chr(10), '//')}'...")
+            logger.debug(
+                "[LLMManager DEBUG Cache Hit] Returning cached response for prompt (first 70 chars): %s... -> '%s'...",
+                prompt[:70].replace(chr(10), "//"),
+                cached[:100].replace(chr(10), "//"),
+            )
             # --- END MODIFIED LOGGING ---
             return cached
 
         if not self.is_ready:
-            print(f"[LLMManager WARNING] Not ready, returning <wait_llm_not_ready> for prompt: {prompt[:70].replace(chr(10), '//')}...")
+            logger.warning(
+                "[LLMManager WARNING] Not ready, returning <wait_llm_not_ready> for prompt: %s...",
+                prompt[:70].replace(chr(10), "//"),
+            )
             return "<wait_llm_not_ready>"
 
         if world is None:
-            print("[LLMManager ERROR] world is None in live mode request. Cannot manage async future. Returning <error_llm_setup>.")
+            logger.error(
+                "[LLMManager ERROR] world is None in live mode request. Cannot manage async future. Returning <error_llm_setup>."
+            )
             return "<error_llm_setup>"
         
         if self.loop is None: 
-            print("[LLMManager ERROR] self.loop is None despite is_ready being True. Returning <error_llm_loop_missing>.")
+            logger.error(
+                "[LLMManager ERROR] self.loop is None despite is_ready being True. Returning <error_llm_loop_missing>."
+            )
             return "<error_llm_loop_missing>"
         
         fut: asyncio.Future[str] = self.loop.create_future()
@@ -160,9 +185,10 @@ class LLMManager:
     async def process_queue_item(self) -> None:
         """Handle a single queued prompt and populate the cache."""
         prompt, fut, prompt_id = await self.queue.get()
-        # --- MODIFIED LOGGING: Simplified as prompt_builder logs full prompt ---
-        print(f"[LLMManager DEBUG process_queue_item] Processing prompt_id {prompt_id} from queue.")
-        # --- END MODIFIED LOGGING ---
+        logger.debug(
+            "[LLMManager DEBUG process_queue_item] Processing prompt_id %s from queue.",
+            prompt_id,
+        )
 
         world = getattr(self, "world", None)
         if world is not None:
@@ -203,11 +229,19 @@ class LLMManager:
 
                     # --- MODIFIED LOGGING: Full Raw JSON Response, pretty-printed ---
                     try:
-                        parsed_json_for_log = json.loads(raw_response_text) # Use original raw_response_text
+                        parsed_json_for_log = json.loads(raw_response_text)
                         pretty_raw_response = json.dumps(parsed_json_for_log, indent=2)
-                        print(f"\n--- [LLMManager Raw API Response prompt_id {prompt_id}] ---\n{pretty_raw_response}\n--- END Raw API Response ---\n")
-                    except json.JSONDecodeError: # Fallback if not valid JSON
-                        print(f"\n--- [LLMManager Raw API Response (Non-JSON) prompt_id {prompt_id}] ---\n{raw_response_text}\n--- END Raw API Response ---\n")
+                        logger.debug(
+                            "\n--- [LLMManager Raw API Response prompt_id %s] ---\n%s\n--- END Raw API Response ---\n",
+                            prompt_id,
+                            pretty_raw_response,
+                        )
+                    except json.JSONDecodeError:
+                        logger.debug(
+                            "\n--- [LLMManager Raw API Response (Non-JSON) prompt_id %s] ---\n%s\n--- END Raw API Response ---\n",
+                            prompt_id,
+                            raw_response_text,
+                        )
                     # --- END MODIFIED LOGGING ---
 
                     choices = data.get("choices")
@@ -220,39 +254,74 @@ class LLMManager:
                                 if isinstance(content, str):
                                     result = content.strip()
                                 else:
-                                    print(f"[LLMManager WARNING] 'content' is not a string or missing in choice for prompt_id {prompt_id}.")
+                                    logger.warning(
+                                        "[LLMManager WARNING] 'content' is not a string or missing in choice for prompt_id %s.",
+                                        prompt_id,
+                                    )
                                     result = "<error_llm_malformed_content>"
                             else:
-                                print(f"[LLMManager WARNING] 'message' is not a dict or missing in choice for prompt_id {prompt_id}.")
+                                logger.warning(
+                                    "[LLMManager WARNING] 'message' is not a dict or missing in choice for prompt_id %s.",
+                                    prompt_id,
+                                )
                                 result = "<error_llm_malformed_message>"
                         else:
-                            print(f"[LLMManager WARNING] First choice is not a dict for prompt_id {prompt_id}.")
+                            logger.warning(
+                                "[LLMManager WARNING] First choice is not a dict for prompt_id %s.",
+                                prompt_id,
+                            )
                             result = "<error_llm_malformed_choice>"
                     else:
-                        print(f"[LLMManager WARNING] 'choices' array is empty or missing for prompt_id {prompt_id}.")
+                        logger.warning(
+                            "[LLMManager WARNING] 'choices' array is empty or missing for prompt_id %s.",
+                            prompt_id,
+                        )
                         result = "<error_llm_no_choices>"
                     
                     if not result: 
-                        print(f"[LLMManager WARNING] LLM returned empty content for prompt_id {prompt_id}.")
+                        logger.warning(
+                            "[LLMManager WARNING] LLM returned empty content for prompt_id %s.",
+                            prompt_id,
+                        )
                         result = "<llm_empty_response>" 
 
             except httpx.HTTPStatusError as e:
-                print(f"[LLMManager ERROR] HTTP Status Error for prompt_id {prompt_id}: {e.response.status_code} - {e.response.text[:200]}")
+                logger.error(
+                    "[LLMManager ERROR] HTTP Status Error for prompt_id %s: %s - %s",
+                    prompt_id,
+                    e.response.status_code,
+                    e.response.text[:200],
+                )
                 result = f"<error_llm_http_{e.response.status_code}>"
             except httpx.RequestError as e:
-                print(f"[LLMManager ERROR] Request Error for prompt_id {prompt_id}: {e}")
+                logger.error(
+                    "[LLMManager ERROR] Request Error for prompt_id %s: %s",
+                    prompt_id,
+                    e,
+                )
                 result = "<error_llm_request>"
             except Exception as e: 
                 error_type_name = type(e).__name__
-                print(f"[LLMManager ERROR] Unexpected error ({error_type_name}) processing LLM response for prompt_id {prompt_id}: {e}")
+                logger.error(
+                    "[LLMManager ERROR] Unexpected error (%s) processing LLM response for prompt_id %s: %s",
+                    error_type_name,
+                    prompt_id,
+                    e,
+                )
                 if raw_response_text is not None: 
-                    print(f"   Raw response (if available): {raw_response_text[:500]}")
+                    logger.error("   Raw response (if available): %s", raw_response_text[:500])
                 else:
-                    print(f"   Raw response was not available (error likely occurred before or during API call).")
+                    logger.error(
+                        "   Raw response was not available (error likely occurred before or during API call)."
+                    )
                 result = "<error_llm_parsing>" 
 
         # --- MODIFIED LOGGING: Full result string, newlines replaced for console readability ---
-        print(f"[LLMManager DEBUG process_queue_item] Result for prompt_id {prompt_id}: '{result.replace(chr(10), '//')}'")
+        logger.debug(
+            "[LLMManager DEBUG process_queue_item] Result for prompt_id %s: '%s'",
+            prompt_id,
+            result.replace(chr(10), "//"),
+        )
         # --- END MODIFIED LOGGING ---
 
         if world is not None:
@@ -280,8 +349,8 @@ class LLMManager:
         def _run() -> None:
             self.loop = asyncio.new_event_loop()
             asyncio.set_event_loop(self.loop)
-            self.is_ready = True 
-            print("[LLMManager INFO] LLM worker_thread event loop started and ready.")
+            self.is_ready = True
+            logger.info("[LLMManager INFO] LLM worker_thread event loop started and ready.")
             
             async def _loop_coro() -> None:
                 while True:
@@ -290,10 +359,10 @@ class LLMManager:
             try:
                 self.loop.run_until_complete(_loop_coro())
             except Exception as e:
-                print(f"[LLMManager CRITICAL] LLM worker thread main loop crashed: {e}")
+                logger.critical("[LLMManager CRITICAL] LLM worker thread main loop crashed: %s", e)
             finally:
                 self.is_ready = False
-                print("[LLMManager INFO] LLM worker_thread event loop stopped.")
+                logger.info("[LLMManager INFO] LLM worker_thread event loop stopped.")
 
         self._processing_thread = threading.Thread(target=_run, daemon=True, name="LLMProcessingThread")
         self._processing_thread.start()
@@ -317,8 +386,8 @@ class LLMManager:
                 mode_from_cfg = str(cfg.get("llm", {}).get("mode", "offline")).lower()
                 if mode_from_cfg in cls.MODES:
                     return mode_from_cfg
-            except Exception as e: # pylint: disable=broad-except
-                print(f"Warning: Error reading project root config.yaml: {e}")
+            except Exception as e:  # pylint: disable=broad-except
+                logger.warning("Warning: Error reading project root config.yaml: %s", e)
         
         # Fallback to config.yaml relative to this file's location
         path = Path(__file__).resolve().parents[3] / "config.yaml"
@@ -329,8 +398,8 @@ class LLMManager:
                 mode_from_cfg = str(cfg.get("llm", {}).get("mode", "offline")).lower()
                 if mode_from_cfg in cls.MODES:
                     return mode_from_cfg
-            except Exception as e: # pylint: disable=broad-except
-                print(f"Warning: Error reading parent config.yaml: {e}")
+            except Exception as e:  # pylint: disable=broad-except
+                logger.warning("Warning: Error reading parent config.yaml: %s", e)
 
         return "offline" 
 
