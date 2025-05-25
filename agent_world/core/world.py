@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from typing import Any, List, Tuple, TYPE_CHECKING
+from typing import Any, List, Tuple, TYPE_CHECKING, Optional
 import asyncio
 import threading
 
@@ -12,6 +12,7 @@ from ..utils.asset_generation import noise
 if TYPE_CHECKING:
     from ..systems.ai.actions import ActionQueue  # Forward reference for type hint
     from ..ai.llm.llm_manager import LLMManager
+    from ..systems.combat.combat_system import CombatSystem
 
 
 class World:
@@ -43,6 +44,8 @@ class World:
         # For GUI state
         self.gui_enabled: bool = False
         self.paused_for_angel: bool = False
+        # Reference to the main CombatSystem instance
+        self.combat_system_instance: Optional[CombatSystem] = None
 
         # Pre-computed glyph/colour data for resource types
         self._resource_defs = {
