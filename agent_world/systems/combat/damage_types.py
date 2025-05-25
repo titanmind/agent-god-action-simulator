@@ -9,6 +9,8 @@ class DamageType(Enum):
     """Enumerate supported damage categories."""
 
     MELEE = "melee"
+    FIRE = "fire"
+    MAGIC = "magic"
 
 
 __all__ = ["DamageType"]

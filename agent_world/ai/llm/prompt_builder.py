@@ -145,6 +145,32 @@ def build_prompt(agent_id: int, world: World, *, memory_k: int = 5) -> str:
     if visible_entities_and_items_info_standard: agent_specific_world_data["visible_entities_and_items"] = sorted(visible_entities_and_items_info_standard, key=lambda x:x.get("id",0))
     else: agent_specific_world_data["visible_entities_and_items"] = "You see no other entities or items."
 
+    # Expose concise combat information for agents
+    combat_info: Dict[str, Any] = {}
+    my_hp = cm.get_component(agent_id, Health)
+    if my_hp:
+        combat_info["self_health"] = f"{my_hp.cur}/{my_hp.max}"
+
+    threats: list[Dict[str, Any]] = []
+    if perception_cache and perception_cache.visible:
+        for eid in perception_cache.visible:
+            if eid == agent_id:
+                continue
+            hp = cm.get_component(eid, Health)
+            if hp and hp.cur > 0:
+                threats.append({"id": eid, "health": f"{hp.cur}/{hp.max}"})
+    if threats:
+        combat_info["nearby_threats"] = sorted(threats, key=lambda t: t["id"])
+
+    if my_goals_list:
+        target = getattr(my_goals_list[0], "target", None)
+        if isinstance(target, int):
+            thp = cm.get_component(target, Health)
+            if thp:
+                combat_info["goal_target_health"] = f"{thp.cur}/{thp.max}"
+
+    agent_specific_world_data["combat_info"] = combat_info
+
     _VISITED_OBJECTS_DURING_NORMALIZE = set()
     normalized_view = _normalize(agent_specific_world_data)
     try: serialized_view = json.dumps(normalized_view, sort_keys=True, indent=2, default=str)
