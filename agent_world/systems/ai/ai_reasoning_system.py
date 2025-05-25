@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 from typing import Any, List, Optional, Tuple
-import re # For checking hex string pattern
+import re  # For checking hex string pattern
+import logging
+
+logger = logging.getLogger(__name__)
 
 COOLDOWN_TICKS = 10 # How many ticks an agent waits after an LLM action before requesting another
 
@@ -122,15 +125,33 @@ class AIReasoningSystem:
                     returned_value = self.llm.request(prompt, self.world)
 
                     if returned_value in NON_ACTION_STRINGS:
-                        print(f"[Tick {tm.tick_counter}][AI Agent {entity_id}] LLM returned immediate non-action/error: '{returned_value}' for prompt: {prompt[:70]}...")
+                        logger.debug(
+                            "[Tick %s][AI Agent %s] LLM returned immediate non-action/error: '%s' for prompt: %s...",
+                            tm.tick_counter,
+                            entity_id,
+                            returned_value,
+                            prompt[:70],
+                        )
                         # final_action_to_take remains None, BT will be tried.
                     elif PROMPT_ID_PATTERN.match(returned_value):
                         # This is a new prompt_id because llm.request scheduled a new call
                         ai_comp.pending_llm_prompt_id = returned_value
-                        print(f"[Tick {tm.tick_counter}][AI Agent {entity_id}] New LLM request initiated. Prompt ID: {ai_comp.pending_llm_prompt_id}. Prompt: {prompt[:70]}...")
+                        logger.debug(
+                            "[Tick %s][AI Agent %s] New LLM request initiated. Prompt ID: %s. Prompt: %s...",
+                            tm.tick_counter,
+                            entity_id,
+                            ai_comp.pending_llm_prompt_id,
+                            prompt[:70],
+                        )
                     else:
                         # This is an immediate valid action (e.g., from cache, or echo mode if not live)
-                        print(f"[Tick {tm.tick_counter}][AI Agent {entity_id}] LLM returned immediate valid action: '{returned_value}' (e.g. cached/echo) for prompt: {prompt[:70]}...")
+                        logger.info(
+                            "[Tick %s][AI Agent %s] LLM returned immediate valid action: '%s' for prompt: %s...",
+                            tm.tick_counter,
+                            entity_id,
+                            returned_value,
+                            prompt[:70],
+                        )
                         final_action_to_take = returned_value
                 
                 elif self.llm.mode == "echo": # Handle echo mode separately if not covered by "live"
@@ -141,8 +162,14 @@ class AIReasoningSystem:
                             line for line in prompt.splitlines()
                             if "GENERATE_ABILITY" not in line
                         )
-                    returned_action = self.llm.request(prompt, self.world) # LLMManager handles echo logic
-                    print(f"[Tick {tm.tick_counter}][AI Agent {entity_id}] LLM Echo mode response: '{returned_action}' for prompt: {prompt[:70]}...")
+                    returned_action = self.llm.request(prompt, self.world)  # LLMManager handles echo logic
+                    logger.debug(
+                        "[Tick %s][AI Agent %s] LLM Echo mode response: '%s' for prompt: %s...",
+                        tm.tick_counter,
+                        entity_id,
+                        returned_action,
+                        prompt[:70],
+                    )
                     if returned_action not in NON_ACTION_STRINGS:
                         final_action_to_take = returned_action
                 # If LLM mode is "offline", llm.request returns "<wait>", which is in NON_ACTION_STRINGS,
@@ -154,11 +181,23 @@ class AIReasoningSystem:
                 if future and future.done():
                     try:
                         action_from_llm = future.result()
-                        print(f"[Tick {tm.tick_counter}][AI Agent {entity_id}] LLM Future resolved. Prompt ID {ai_comp.pending_llm_prompt_id}. Result: '{action_from_llm}'")
+                        logger.debug(
+                            "[Tick %s][AI Agent %s] LLM Future resolved. Prompt ID %s. Result: '%s'",
+                            tm.tick_counter,
+                            entity_id,
+                            ai_comp.pending_llm_prompt_id,
+                            action_from_llm,
+                        )
                         if action_from_llm not in NON_ACTION_STRINGS:
                             final_action_to_take = action_from_llm
                     except Exception as e:
-                        print(f"[Tick {tm.tick_counter}][AI Agent {entity_id}] Error getting result from LLM future for Prompt ID {ai_comp.pending_llm_prompt_id}: {e}")
+                        logger.warning(
+                            "[Tick %s][AI Agent %s] Error getting result from LLM future for Prompt ID %s: %s",
+                            tm.tick_counter,
+                            entity_id,
+                            ai_comp.pending_llm_prompt_id,
+                            e,
+                        )
                     
                     self.world.async_llm_responses.pop(ai_comp.pending_llm_prompt_id, None)
                     ai_comp.pending_llm_prompt_id = None
@@ -168,7 +207,12 @@ class AIReasoningSystem:
             if not final_action_to_take and self.behavior_tree:
                 # Only log BT usage if an LLM attempt was made/resolved OR if LLM is offline
                 if llm_attempt_made_or_resolved or self.llm.mode == "offline":
-                    print(f"[Tick {tm.tick_counter}][AI Agent {entity_id}] No valid LLM action. Mode: {self.llm.mode}. Trying behavior tree.")
+                    logger.debug(
+                        "[Tick %s][AI Agent %s] No valid LLM action. Mode: %s. Trying behavior tree.",
+                        tm.tick_counter,
+                        entity_id,
+                        self.llm.mode,
+                    )
                 
                 fallback_action = self.behavior_tree.run(entity_id, self.world)
                 if fallback_action:
@@ -176,7 +220,13 @@ class AIReasoningSystem:
                     # print(f"[Tick {tm.tick_counter}][AI Agent {entity_id}] Behavior tree provided fallback: '{fallback_action}'")
             
             if final_action_to_take:
-                print(f"[Tick {tm.tick_counter}][AI Agent {entity_id}] Decided action: '{final_action_to_take}' (LLM Mode: {self.llm.mode}, Source: {'LLM' if llm_attempt_made_or_resolved and final_action_to_take not in self.behavior_tree.run(entity_id,self.world) else 'BT'})") # Indicate source
+                logger.info(
+                    "[Tick %s][AI Agent %s] Decided action: '%s' (LLM Mode: %s)",
+                    tm.tick_counter,
+                    entity_id,
+                    final_action_to_take,
+                    self.llm.mode,
+                )
                 if not self._sink_wrapped:
                     if self.action_queue is None:
                         self.action_queue = getattr(self.world, "action_queue", None)
