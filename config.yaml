@@ -2,9 +2,17 @@ world:
   size: [100, 100]
   tick_rate: 10
   max_entities: 8000
+  paused_for_angel_timeout_seconds: 60
 
 llm:
   mode: offline
+  agent_decision_model: "default/model"
+  angel_generation_model: "default/model"
+
+# paths:
+#   abilities_vault: "./agent_world/abilities/vault"
+#   abilities_generated: "./agent_world/abilities/generated"
+#   abilities_builtin: "./agent_world/abilities/builtin"
 
 cache:
   sprite_max: 10000      # max images in RAM
