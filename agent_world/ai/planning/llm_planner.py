@@ -3,6 +3,8 @@ from __future__ import annotations
 """LLM-backed planner for generating action plans."""
 
 from typing import Any, List, Tuple
+import re
+import time
 
 from .base_planner import BasePlanner
 from ..llm.llm_manager import LLMManager
@@ -105,9 +107,29 @@ class LLMPlanner(BasePlanner):
             "Respond with one action step per line in the format 'ACTION [arg]'"
         )
         response = self.llm.request(prompt, world, model=self.llm.agent_decision_model)
+
         if not response or response.startswith("<"):
             return []
-        return self._parse_plan_text(response)
+
+        plan_text = ""
+        if re.fullmatch(r"[a-f0-9]{32}", response) and world is not None:
+            fut = getattr(world, "async_llm_responses", {}).get(response)
+            if fut is not None:
+                start = time.time()
+                while not fut.done() and time.time() - start < 5:
+                    time.sleep(0.01)
+                if fut.done():
+                    try:
+                        plan_text = fut.result()
+                    except Exception:
+                        plan_text = ""
+                getattr(world, "async_llm_responses", {}).pop(response, None)
+        else:
+            plan_text = response
+
+        if not plan_text or plan_text.startswith("<"):
+            return []
+        return self._parse_plan_text(plan_text)
 
 
 __all__ = ["LLMPlanner"]
