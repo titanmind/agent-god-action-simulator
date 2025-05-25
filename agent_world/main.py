@@ -142,6 +142,7 @@ def bootstrap(config_path: str | Path = Path("config.yaml")) -> World:
     sm.register(perception_sys)
     sm.register(event_perception_sys)
     sm.register(combat_sys)
+    world.combat_system_instance = combat_sys
     sm.register(pickup_sys)
     sm.register(trading_sys)
     sm.register(stealing_sys)
