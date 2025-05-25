@@ -1,10 +1,11 @@
+
 # agent_world/core/components/ai_state.py
 """Component representing the AI-related state for an entity."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Dict
 
 
 @dataclass(slots=True)
@@ -35,12 +36,12 @@ class AIState:
     current_plan: List[ActionStep] = field(default_factory=list)
     
     pending_llm_prompt_id: str | None = None
-    pending_llm_for_plan_step_action: str | None = None # Action string of plan step awaiting LLM
+    pending_llm_for_plan_step_action: str | None = None 
 
-    # Task 5.2: New field to indicate agent is waiting for an ability
     waiting_for_ability_generation_desc: Optional[str] = None
-    # Task 5.2: Field to store the name of a newly generated ability to hint its use
     newly_generated_ability_name: Optional[str] = None
+    # Task 7.2: Store context for the newly generated ability
+    newly_generated_ability_context: Optional[Dict[str, Any]] = None
 
 
     last_llm_action_tick: int = -1
