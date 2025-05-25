@@ -14,6 +14,7 @@ from ...core.components.ai_state import AIState
 from ...ai.llm.prompt_builder import build_prompt
 from ...ai.llm.llm_manager import LLMManager
 from ...core.components.role import RoleComponent
+from ...ai.planning.llm_planner import LLMPlanner
 from .behavior_tree import BehaviorTree, build_fallback_tree
 from .actions import parse_action_string, ActionQueue
 
@@ -52,11 +53,13 @@ class AIReasoningSystem:
         llm: LLMManager,
         action_tuples_list: List[Tuple[int, str]], # This is world.raw_actions_with_actor
         behavior_tree: Optional[BehaviorTree] = None,
+        planner: LLMPlanner | None = None,
     ) -> None:
         self.world = world
         self.llm = llm
         self.action_tuples_list = action_tuples_list
         self.behavior_tree = behavior_tree or build_fallback_tree()
+        self.planner = planner or LLMPlanner(llm)
         self.action_queue: ActionQueue | None = getattr(world, "action_queue", None)
         self._sink_wrapped = isinstance(action_tuples_list, RawActionCollector)
 
@@ -95,6 +98,9 @@ class AIReasoningSystem:
                         self.action_tuples_list.append((entity_id, action))
                 continue
 
+            if ai_comp.goals and not ai_comp.current_plan:
+                ai_comp.current_plan = self.planner.create_plan(entity_id, ai_comp.goals, self.world)
+
             bypass_cooldown = False
             if ai_comp.needs_immediate_rethink:
                 ai_comp.needs_immediate_rethink = False
@@ -111,11 +117,33 @@ class AIReasoningSystem:
             final_action_to_take: str | None = None
             llm_attempt_made_or_resolved = False # Track if we interacted with LLM this tick
 
-            if ai_comp.pending_llm_prompt_id is None:
+            plan_hint: str | None = None
+            if ai_comp.current_plan:
+                step = ai_comp.current_plan[0]
+                direct_actions = {"MOVE", "ATTACK", "LOG", "IDLE", "GENERATE_ABILITY", "USE_ABILITY", "PICKUP"}
+                if step.action.upper() in direct_actions:
+                    part = step.parameters.get("arg")
+                    if part is not None:
+                        final_action_to_take = f"{step.action} {part}".strip()
+                    elif step.target is not None:
+                        final_action_to_take = f"{step.action} {step.target}".strip()
+                    else:
+                        final_action_to_take = step.action
+                    ai_comp.current_plan.pop(0)
+                else:
+                    plan_hint = step.action
+                    if step.target is not None:
+                        plan_hint += f" {step.target}"
+                    elif step.parameters.get("arg"):
+                        plan_hint += f" {step.parameters['arg']}"
+
+            if final_action_to_take is None and ai_comp.pending_llm_prompt_id is None:
                 # No pending request, try to make a new one
                 if self.llm.mode == "live":
                     llm_attempt_made_or_resolved = True
                     prompt = build_prompt(entity_id, self.world)
+                    if plan_hint:
+                        prompt += f"\n{plan_hint}"
                     if role_comp and not role_comp.can_request_abilities:
                         prompt = "\n".join(
                             line for line in prompt.splitlines()
@@ -156,6 +184,8 @@ class AIReasoningSystem:
                 elif self.llm.mode == "echo": # Handle echo mode separately if not covered by "live"
                     llm_attempt_made_or_resolved = True
                     prompt = build_prompt(entity_id, self.world)
+                    if plan_hint:
+                        prompt += f"\n{plan_hint}"
                     if role_comp and not role_comp.can_request_abilities:
                         prompt = "\n".join(
                             line for line in prompt.splitlines()
@@ -174,7 +204,7 @@ class AIReasoningSystem:
                 # If LLM mode is "offline", llm.request returns "<wait>", which is in NON_ACTION_STRINGS,
                 # so it will fall through to behavior tree. No specific handling needed here.
 
-            else: # Has a pending LLM request
+            elif ai_comp.pending_llm_prompt_id is not None and final_action_to_take is None:
                 llm_attempt_made_or_resolved = True
                 future = self.world.async_llm_responses.get(ai_comp.pending_llm_prompt_id)
                 if future and future.done():
