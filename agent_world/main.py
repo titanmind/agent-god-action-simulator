@@ -99,11 +99,14 @@ def bootstrap(config_path: str | Path = Path("config.yaml")) -> World:
     llm_model = os.getenv("OPENROUTER_MODEL") or llm_cfg.get("model")
     agent_decision_model = llm_cfg.get("agent_decision_model", "default/model")
     angel_generation_model = llm_cfg.get("angel_generation_model", "default/model")
-    llm = LLMManager(api_key=llm_api_key, model=llm_model)
-    llm.agent_decision_model = agent_decision_model
-    llm.angel_generation_model = angel_generation_model
+    llm = LLMManager(
+        api_key=llm_api_key,
+        model=llm_model,
+        agent_decision_model=agent_decision_model,
+        angel_generation_model=angel_generation_model,
+    )
     print(
-        f"[Bootstrap] LLM decision model: {agent_decision_model}, Angel model: {angel_generation_model}"
+        f"[Bootstrap] LLM decision model: {llm.agent_decision_model}, Angel model: {llm.angel_generation_model}"
     )
 
     paths_cfg = cfg.get("paths")
@@ -326,6 +329,7 @@ def main() -> None:
     paused = False
     step_once = False
     running = True
+    angel_pause_start: float | None = None
 
     print("\nApplication started. CLI is active. Type /help for commands, or /gui to toggle display.")
 
@@ -334,6 +338,21 @@ def main() -> None:
 
     try:
         while running:
+            if world.paused_for_angel:
+                if angel_pause_start is None:
+                    angel_pause_start = time.time()
+                elif (
+                    world.paused_for_angel_timeout_seconds > 0
+                    and time.time() - angel_pause_start
+                    > world.paused_for_angel_timeout_seconds
+                ):
+                    print(
+                        f"[Main WARNING] Angel pause exceeded {world.paused_for_angel_timeout_seconds}s; resuming."
+                    )
+                    world.paused_for_angel = False
+                    angel_pause_start = None
+            else:
+                angel_pause_start = None
             gui_events_state = {
                 "paused": paused, "running": running,
                 "fps_enabled": world.fps_enabled, "renderer": actual_renderer

@@ -32,6 +32,12 @@ class AbilitySystem:
         builtin_dir = base_dir / "builtin"
         generated_dir = base_dir / "generated"
         vault_dir = base_dir / "vault"
+
+        paths_cfg = getattr(world, "paths", None)
+        if isinstance(paths_cfg, dict):
+            builtin_dir = Path(paths_cfg.get("abilities_builtin", builtin_dir))
+            generated_dir = Path(paths_cfg.get("abilities_generated", generated_dir))
+            vault_dir = Path(paths_cfg.get("abilities_vault", vault_dir))
         
         # Ensure generated directory exists
         generated_dir.mkdir(parents=True, exist_ok=True)
