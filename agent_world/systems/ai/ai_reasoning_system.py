@@ -12,6 +12,7 @@ from ...ai.llm.prompt_builder import build_prompt
 from ...ai.llm.llm_manager import LLMManager
 from ...core.components.role import RoleComponent
 from .behavior_tree import BehaviorTree, build_fallback_tree
+from .actions import parse_action_string, ActionQueue
 
 # Define strings that are considered non-actions or failures from the LLM
 NON_ACTION_STRINGS = [
@@ -53,6 +54,8 @@ class AIReasoningSystem:
         self.llm = llm
         self.action_tuples_list = action_tuples_list
         self.behavior_tree = behavior_tree or build_fallback_tree()
+        self.action_queue: ActionQueue | None = getattr(world, "action_queue", None)
+        self._sink_wrapped = isinstance(action_tuples_list, RawActionCollector)
 
     def update(self, tick: int) -> None: # tick parameter is passed by SystemsManager
         """Handle pending and new LLM prompts for all agents."""
@@ -81,6 +84,12 @@ class AIReasoningSystem:
                 if self.behavior_tree:
                     action = self.behavior_tree.run(entity_id, self.world)
                     if action:
+                        if not self._sink_wrapped:
+                            if self.action_queue is None:
+                                self.action_queue = getattr(self.world, "action_queue", None)
+                            if self.action_queue is not None:
+                                for act in parse_action_string(entity_id, action):
+                                    self.action_queue._queue.append(act)
                         self.action_tuples_list.append((entity_id, action))
                 continue
 
@@ -168,6 +177,13 @@ class AIReasoningSystem:
             
             if final_action_to_take:
                 print(f"[Tick {tm.tick_counter}][AI Agent {entity_id}] Decided action: '{final_action_to_take}' (LLM Mode: {self.llm.mode}, Source: {'LLM' if llm_attempt_made_or_resolved and final_action_to_take not in self.behavior_tree.run(entity_id,self.world) else 'BT'})") # Indicate source
+                if not self._sink_wrapped:
+                    if self.action_queue is None:
+                        self.action_queue = getattr(self.world, "action_queue", None)
+                    if self.action_queue is not None:
+                        parsed_actions = parse_action_string(entity_id, final_action_to_take)
+                        for act in parsed_actions:
+                            self.action_queue._queue.append(act)
                 self.action_tuples_list.append((entity_id, final_action_to_take))
                 ai_comp.last_llm_action_tick = tm.tick_counter
             elif llm_attempt_made_or_resolved and ai_comp.pending_llm_prompt_id is None: 
@@ -182,4 +198,21 @@ class AIReasoningSystem:
                 ai_comp.last_llm_action_tick = tm.tick_counter
 
 
-__all__ = ["AIReasoningSystem"]
+__all__ = ["AIReasoningSystem", "RawActionCollector"]
+
+
+class RawActionCollector(list[tuple[int, str]]):
+    """List-like collector that also enqueues parsed actions."""
+
+    def __init__(self, action_queue: ActionQueue) -> None:
+        super().__init__()
+        self.action_queue = action_queue
+
+    def append(self, item: tuple[int, str]) -> None:  # type: ignore[override]
+        actor_id, text = item
+        if self.action_queue is not None:
+            parsed = parse_action_string(actor_id, text)
+            for act in parsed:
+                self.action_queue._queue.append(act)
+        super().append(item)
+
