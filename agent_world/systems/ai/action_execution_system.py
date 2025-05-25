@@ -78,13 +78,24 @@ class ActionExecutionSystem:
                     )
                     cm.add_component(action.actor, Physics(mass=1.0, vx=0.0, vy=0.0, friction=0.95))
                 
-                # print(f"[Tick {tick}] ActionExec: Applying force for MoveAction: dx={action.dx}, dy={action.dy} to entity {action.actor}") # Verbose
+                logger.debug(
+                    "[Tick %s] ActionExec: Applying force for MoveAction: dx=%s, dy=%s to entity %s",
+                    tick,
+                    action.dx,
+                    action.dy,
+                    action.actor,
+                )
                 apply_force(self.world, action.actor, float(action.dx), float(action.dy), ttl=1)
                 if cm.get_component(action.actor, Velocity):
                     cm.remove_component(action.actor, Velocity)
 
             elif isinstance(action, AttackAction):
-                # print(f"[Tick {tick}] ActionExec: Actor {action.actor} performing AttackAction on target {action.target}") # Verbose
+                logger.debug(
+                    "[Tick %s] ActionExec: Actor %s performing AttackAction on target %s",
+                    tick,
+                    action.actor,
+                    action.target,
+                )
                 self.combat.attack(action.actor, action.target, tick=tick)
             
             elif isinstance(action, LogAction):
