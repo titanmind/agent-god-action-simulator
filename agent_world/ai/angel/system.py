@@ -1,10 +1,9 @@
-
 # agent_world/ai/angel/system.py
 """Angel system for granting new abilities."""
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional # Added Optional
+from typing import Any, Dict, Optional 
 from pathlib import Path
 import logging
 import re
@@ -19,7 +18,8 @@ from ...persistence.event_log import append_event, ANGEL_ACTION
 
 logger = logging.getLogger(__name__)
 
-ANGEL_LLM_REQUEST_TIMEOUT_SECONDS = 20.0 
+ANGEL_LLM_REQUEST_TIMEOUT_SECONDS = 25.0 # Increased slightly
+CONCEPTUAL_TEST_LLM_REQUEST_TIMEOUT_SECONDS = 25.0
 
 
 class AngelSystem:
@@ -59,15 +59,9 @@ class AngelSystem:
                 ai_state.newly_generated_ability_name = result.get("ability_class_name")
                 ai_state.newly_generated_ability_context = original_step_context 
                 ai_state.last_error = None 
-            else: # Failure
+            else: 
                 ai_state.last_error = result.get("reason", "Unknown Angel System error")
-                # Task 7.3: If generation failed, increment retry for the original plan step if context matches
-                # This logic is now primarily handled in AIReasoningSystem when it sees last_error is set.
-                # AngelSystem just provides the error. AIReasoningSystem owns plan step retries.
-                # However, setting last_error here is the trigger.
                 logger.warning("[AngelSystem] Ability generation FAILED for agent %s. Reason: %s. Error set on AIState.", agent_id, ai_state.last_error)
-
-
             logger.info("[AngelSystem] Finalized request for agent %s (Desc: '%s'). Result: %s. Needs rethink.", agent_id, description, result.get("status"))
 
 
@@ -94,6 +88,18 @@ class AngelSystem:
         self.world.async_llm_responses.pop(prompt_id, None) 
         return response_text
 
+    def _clean_llm_code_output(self, code_str: str) -> str:
+        """Strips common Markdown code block delimiters from LLM string output."""
+        if not code_str: return ""
+        clean_code = code_str.strip()
+        if clean_code.startswith("```python"):
+            clean_code = clean_code[len("```python"):].strip()
+        elif clean_code.startswith("```"): 
+            clean_code = clean_code[len("```"):].strip()
+        if clean_code.endswith("```"):
+            clean_code = clean_code[:-len("```")].strip()
+        return clean_code
+
     def process_pending_requests(self) -> None:
         if not self.world.paused_for_angel: return 
 
@@ -111,33 +117,39 @@ class AngelSystem:
             return
 
         if self.current_processing_request:
-            agent_id, description, pending_llm_id, gen_code, orig_ctx = self.current_processing_request
+            agent_id, description, pending_llm_id, gen_code_for_test, orig_ctx = self.current_processing_request
             
             if self.current_processing_stage == "code_generation" and pending_llm_id:
-                actual_generated_code = self._get_llm_response_blocking(pending_llm_id, ANGEL_LLM_REQUEST_TIMEOUT_SECONDS)
-                if actual_generated_code is None or actual_generated_code.startswith("<error"): 
-                    reason = f"LLM code generation failed or timed out ({actual_generated_code or 'timeout'})"
+                raw_generated_code = self._get_llm_response_blocking(pending_llm_id, ANGEL_LLM_REQUEST_TIMEOUT_SECONDS)
+                if raw_generated_code is None or raw_generated_code.startswith("<error"): 
+                    reason = f"LLM code generation failed or timed out ({raw_generated_code or 'timeout'})"
                     self._finalize_request_processing(agent_id, description, orig_ctx, {"status": "failure", "reason": reason})
                     self.current_processing_request = None; self.current_processing_stage = None
                 else: 
-                    logger.info("[AngelSystem] Code generated for agent %s. Proceeding to conceptual test.", agent_id)
-                    self.current_processing_request = (agent_id, description, None, actual_generated_code, orig_ctx) 
-                    self.current_processing_stage = "conceptual_test_request" 
+                    actual_generated_code = self._clean_llm_code_output(raw_generated_code) # Task 12.1
+                    if not actual_generated_code: # If cleaning resulted in empty string
+                        reason = "LLM code generation returned empty or only markdown."
+                        self._finalize_request_processing(agent_id, description, orig_ctx, {"status": "failure", "reason": reason})
+                        self.current_processing_request = None; self.current_processing_stage = None
+                    else:
+                        logger.info("[AngelSystem] Code generated (and cleaned) for agent %s. Proceeding to conceptual test.", agent_id)
+                        self.current_processing_request = (agent_id, description, None, actual_generated_code, orig_ctx) 
+                        self.current_processing_stage = "conceptual_test_request" 
             
-            elif self.current_processing_stage == "conceptual_test_request" and gen_code:
-                conceptual_test_prompt = self._build_conceptual_test_prompt(gen_code, description)
+            elif self.current_processing_stage == "conceptual_test_request" and gen_code_for_test:
+                conceptual_test_prompt = self._build_conceptual_test_prompt(gen_code_for_test, description)
                 concept_test_llm_id = llm.request(conceptual_test_prompt, self.world, model=llm.angel_generation_model)
 
                 if concept_test_llm_id and not concept_test_llm_id.startswith("<error"):
-                    self.current_processing_request = (agent_id, description, concept_test_llm_id, gen_code, orig_ctx)
+                    self.current_processing_request = (agent_id, description, concept_test_llm_id, gen_code_for_test, orig_ctx)
                     self.current_processing_stage = "conceptual_test_response"
                 else: 
                     reason = f"Failed to submit conceptual test to LLM ({concept_test_llm_id or 'request error'})"
                     self._finalize_request_processing(agent_id, description, orig_ctx, {"status": "failure", "reason": reason})
                     self.current_processing_request = None; self.current_processing_stage = None
 
-            elif self.current_processing_stage == "conceptual_test_response" and pending_llm_id and gen_code:
-                conceptual_test_result_text = self._get_llm_response_blocking(pending_llm_id, ANGEL_LLM_REQUEST_TIMEOUT_SECONDS)
+            elif self.current_processing_stage == "conceptual_test_response" and pending_llm_id and gen_code_for_test:
+                conceptual_test_result_text = self._get_llm_response_blocking(pending_llm_id, CONCEPTUAL_TEST_LLM_REQUEST_TIMEOUT_SECONDS)
                 test_passed = conceptual_test_result_text is not None and conceptual_test_result_text.strip().upper().startswith("PASS")
 
                 if not test_passed:
@@ -146,7 +158,7 @@ class AngelSystem:
                     self._finalize_request_processing(agent_id, description, orig_ctx, {"status": "failure", "reason": reason})
                 else: 
                     logger.info("[AngelSystem] Conceptual test PASSED for agent %s. Granting ability.", agent_id)
-                    path = angel_generator.generate_ability(description, stub_code=gen_code)
+                    path = angel_generator.generate_ability(description, stub_code=gen_code_for_test) # Use the cleaned code
                     class_name = self._extract_class_name(path, description)
                     self._grant_to_agent(agent_id, class_name)
                     append_event_angel(self.world, agent_id, description, "granted", {"ability": class_name})
@@ -227,26 +239,22 @@ class AngelSystem:
             "The 'execute' method should interact with 'world' object which has 'world.entity_manager', 'world.component_manager', 'world.spatial_index', etc. Use these to get entity data and components.",
             "Generated code must be functional. It will not be sandboxed beyond RestrictedPython's initial compile.",
             "Do not use placeholder comments like '# TODO: Implement logic'. Provide functional code.",
-            "Return ONLY the valid Python code for the ability class file. No explanations before or after.",
+            "Return ONLY the valid Python code for the ability class file. Do NOT wrap the code in Markdown backticks (```python ... ```) or any other explanatory text.",
             "", "World Constraints (available attributes on 'world' object, example components):", json.dumps(world_constraints, indent=2, default=str),
             "", "Code Scaffolds (use as a base for class structure):",
         ]
         for key, snippet in code_scaffolds.items(): parts.extend([f"# {key}", str(snippet)])
-        parts.append("\nYour generated Python code for the Ability class (ONLY the code block, ensure it's a single Python code block):")
+        parts.append("\nYour generated Python code for the Ability class (ONLY the raw Python code, no markdown):")
         return "\n".join(parts)
 
     def _build_conceptual_test_prompt(self, generated_code_str: str, original_request_str: str) -> str:
-        clean_code = generated_code_str.strip()
-        if clean_code.startswith("```python"): clean_code = clean_code[len("```python"):].strip()
-        if clean_code.startswith("```"): clean_code = clean_code[len("```"):].strip()
-        if clean_code.endswith("```"): clean_code = clean_code[:-len("```")].strip()
-        
+        # Task 12.1: The generated_code_str passed here should already be cleaned by _clean_llm_code_output
         return (
             "You are the Angel LLM performing a conceptual code review.\n"
             f"The original request was: '{original_request_str}'\n"
             "Here is the candidate Python code generated for this request:\n"
             "```python\n"
-            f"{clean_code}\n"
+            f"{generated_code_str}\n" # Already cleaned, so no further stripping needed here
             "```\n\n"
             "Review the Python code. Does it appear to functionally address the original request? "
             "Does it seem to use a typical game world API (e.g., world.component_manager.get_component(id, Type), world.entity_manager.has_entity(id)) correctly? "

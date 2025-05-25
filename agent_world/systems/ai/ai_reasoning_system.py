@@ -192,12 +192,8 @@ class AIReasoningSystem:
 
             current_plan_step: ActionStep | None = ai_comp.current_plan[0] if ai_comp.current_plan else None
             
-            # Task 10.1: Handle last_error (e.g. from Angel failure) for current plan step
             if ai_comp.last_error and current_plan_step:
                 is_relevant_error = False
-                # Check if the context of the error matches the current step
-                # This relies on newly_generated_ability_context being set *before* Angel call
-                # and *not cleared* if Angel fails for that context.
                 ctx = ai_comp.newly_generated_ability_context
                 if ctx and ctx.get("original_step_action") == current_plan_step.action and \
                    ctx.get("original_step_parameters") == current_plan_step.parameters and \
@@ -208,12 +204,8 @@ class AIReasoningSystem:
                 if is_relevant_error:
                     logger.warning("[Tick %s][AI Agent %s] Last AngelSystem error ('%s') IS relevant to plan step '%s'. Incrementing step retries.", tm.tick_counter, entity_id, ai_comp.last_error, current_plan_step.action)
                     current_plan_step.retries += 1
-                else:
-                    logger.debug("[Tick %s][AI Agent %s] Last AngelSystem error ('%s') NOT deemed relevant to current step '%s' based on context. Context: %s", tm.tick_counter, entity_id, ai_comp.last_error, current_plan_step.action if current_plan_step else "None", ctx)
-                # The error will be included in the prompt by prompt_builder, so it's "processed" for that.
-                # AIReasoningSystem doesn't need to clear it here, prompt_builder or next successful Angel call will.
+                # No longer clearing newly_generated_ability_context here, AngelSystem does it on finalize.
             
-            # Check for plan step completion first (e.g. obstacle gone)
             if current_plan_step and (current_plan_step.step_type == "deal_with_obstacle" or \
                                       (current_plan_step.action and current_plan_step.action.upper() == "DEAL_WITH_OBSTACLE")):
                 coords_param = current_plan_step.parameters.get("coords")
@@ -221,7 +213,7 @@ class AIReasoningSystem:
                 if isinstance(coords_param, (list,tuple)) and len(coords_param) == 2:
                     try: obstacle_coords_to_check = (int(coords_param[0]), int(coords_param[1]))
                     except ValueError: pass
-                elif isinstance(coords_param, str) and "," in coords_param: # Handle string like "(x,y)"
+                elif isinstance(coords_param, str) and "," in coords_param: 
                      try:
                         x_str, y_str = coords_param.strip("()").split(',')
                         obstacle_coords_to_check = (int(x_str.strip()), int(y_str.strip()))
@@ -230,7 +222,6 @@ class AIReasoningSystem:
                 if obstacle_coords_to_check and not pathfinding.is_blocked(obstacle_coords_to_check):
                     logger.info("[Tick %s][AI Agent %s] Obstacle at %s for step '%s' is GONE. Popping step.", tm.tick_counter, entity_id, obstacle_coords_to_check, current_plan_step.action)
                     ai_comp.current_plan.pop(0)
-                    current_plan_step.retries = 0 
                     current_plan_step = ai_comp.current_plan[0] if ai_comp.current_plan else None 
                     ai_comp.general_action_retries = 0 
 
@@ -238,8 +229,9 @@ class AIReasoningSystem:
                 logger.debug("[Tick %s][AI Agent %s] Previous action for plan step '%s' failed. Incrementing step retries from %s.", tm.tick_counter, entity_id, current_plan_step.action, current_plan_step.retries)
                 current_plan_step.retries += 1
             
-            if current_plan_step and current_plan_step.retries > ai_comp.max_plan_step_retries:
-                logger.warning("[Tick %s][AI Agent %s] Max retries (%s) exceeded for plan step: %s. Clearing plan.", tm.tick_counter, entity_id, ai_comp.max_plan_step_retries, current_plan_step)
+            # Task 12.1: Use >= for max retries check
+            if current_plan_step and current_plan_step.retries >= ai_comp.max_plan_step_retries:
+                logger.warning("[Tick %s][AI Agent %s] Max retries (%s) met or exceeded for plan step: %s. Clearing plan.", tm.tick_counter, entity_id, ai_comp.max_plan_step_retries, current_plan_step)
                 ai_comp.current_plan.clear(); current_plan_step = None
                 ai_comp.pending_llm_prompt_id = None; ai_comp.pending_llm_for_plan_step_action = None
                 ai_comp.last_plan_generation_tick = tm.tick_counter 
@@ -248,10 +240,10 @@ class AIReasoningSystem:
                 new_ability = ai_comp.newly_generated_ability_name
                 context_for_new_ability = ai_comp.newly_generated_ability_context
                 ai_comp.newly_generated_ability_name = None 
-                # Keep newly_generated_ability_context until the USE_ABILITY action related to it is taken or fails
+                ai_comp.newly_generated_ability_context = None 
 
                 final_action_to_take = f"USE_ABILITY {new_ability}"
-                logger.info("[Tick %s][AI Agent %s] Attempting to use newly generated ability '%s' for current plan step '%s'. Context: %s", tm.tick_counter, entity_id, new_ability, current_plan_step.action, context_for_new_ability)
+                logger.info("[Tick %s][AI Agent %s] Attempting to use newly generated ability '%s' for current plan step '%s'. Original context for generation: %s", tm.tick_counter, entity_id, new_ability, current_plan_step.action, context_for_new_ability)
 
             if final_action_to_take is None and (ai_comp.goals and not ai_comp.current_plan and
                 ai_comp.last_plan_generation_tick != tm.tick_counter and
@@ -292,15 +284,18 @@ class AIReasoningSystem:
                 else: 
                     if ai_comp.pending_llm_prompt_id is None or ai_comp.pending_llm_for_plan_step_action != step_action_key:
                         prompt_context = f"\nSYSTEM TASK: Current plan step: {current_plan_step.action}"
+                        # Task 11.1: Enhance prompt for retrying plan steps
                         if current_plan_step.step_type == "deal_with_obstacle":
                             coords = current_plan_step.parameters.get("coords_str") or current_plan_step.parameters.get("coords") or current_plan_step.parameters.get("obstacle_ref")
-                            prompt_context = f"\nSYSTEM TASK: Obstacle at {coords} blocks your path. Plan action to deal with it."
-                            if current_plan_step.retries > 0: # Task 11.1
+                            prompt_context = f"\nSYSTEM TASK: Current plan step is '{current_plan_step.action}' for obstacle at {coords}."
+                            if current_plan_step.retries > 0:
                                 prompt_context += (
-                                    f"\nPrevious attempts to resolve this (retries: {current_plan_step.retries}) have not succeeded. "
-                                    f"Last error for this was: {ai_comp.last_error or 'None'}.\n"
-                                    "Consider a DIFFERENT action (e.g. USE_ABILITY, another GENERATE_ABILITY with different description, or MOVE if applicable) or a significantly different ability description."
+                                    f"\nPrevious attempts (retries: {current_plan_step.retries}) to resolve this step have not succeeded. "
+                                    f"The last error/reason for this was: {ai_comp.last_error or 'None'}.\n"
+                                    "Consider a DIFFERENT action (e.g., USE_ABILITY <KnownAbilityName>, another GENERATE_ABILITY with a *significantly different* description, or MOVE if applicable) to achieve the step's goal."
                                 )
+                            else:
+                                prompt_context += " Plan an action to deal with it."
                         elif current_plan_step.step_type == "generate_ability": 
                             desc = current_plan_step.parameters.get("description", "solve a problem")
                             prompt_context = f"\nSYSTEM TASK: You need to generate an ability for: '{desc}'. Formulate the GENERATE_ABILITY action string."
@@ -309,13 +304,11 @@ class AIReasoningSystem:
                         if role_comp and not role_comp.can_request_abilities:
                             prompt = "\n".join(l for l in prompt.splitlines() if "GENERATE_ABILITY" not in l.upper())
                         
-                        # Clear last_error if it's for the *same* step we are now prompting for
-                        if ai_comp.last_error and ai_comp.newly_generated_ability_context and \
-                           ai_comp.newly_generated_ability_context.get("original_step_action") == current_plan_step.action:
+                        if ai_comp.last_error and (ai_comp.newly_generated_ability_context is None or \
+                           (ai_comp.newly_generated_ability_context.get("original_step_action") == current_plan_step.action)):
                             logger.debug("[Tick %s][AI Agent %s] Clearing last_error as we re-prompt for the same failed step.", tm.tick_counter, entity_id)
-                            ai_comp.last_error = None 
-                            # Keep newly_generated_ability_context until a new GENERATE_ABILITY for this step is chosen
-                            # or the step is resolved/abandoned.
+                            # Error is now part of the prompt_context if retries > 0, so it's "used".
+                            # Let prompt_builder handle clearing it from AIState after it's included in main prompt.
                             
                         returned_value = self.llm.request(prompt, self.world)
                         if PROMPT_ID_PATTERN.match(returned_value):
@@ -325,12 +318,11 @@ class AIReasoningSystem:
                         elif returned_value not in NON_ACTION_STRINGS:
                             final_action_to_take = returned_value
                             logger.info("[Tick %s][AI Agent %s] LLM immediate action for plan step '%s': '%s'", tm.tick_counter, entity_id, current_plan_step.action, final_action_to_take.replace('\n','//'))
-                            # Task 9.1: Do NOT pop DEAL_WITH_OBSTACLE or steps that result in GENERATE_ABILITY.
+                            # Task 9.1: Do not pop DEAL_WITH_OBSTACLE or steps that result in GENERATE_ABILITY here.
                             if not final_action_to_take.upper().startswith("GENERATE_ABILITY") and \
                                not (current_plan_step.step_type == "deal_with_obstacle" or \
                                    (current_plan_step.action and current_plan_step.action.upper() == "DEAL_WITH_OBSTACLE")):
                                 ai_comp.current_plan.pop(0)
-                            # current_plan_step.retries = 0 # Reset on any valid action from LLM for this step
                             ai_comp.general_action_retries = 0
                         else: 
                             logger.warning("[Tick %s][AI Agent %s] LLM immediate non-action '%s' for plan step '%s'. Incrementing step retries.", tm.tick_counter, entity_id, returned_value, current_plan_step.action)
@@ -354,7 +346,6 @@ class AIReasoningSystem:
                                    not (current_plan_step.step_type == "deal_with_obstacle" or \
                                        (current_plan_step.action and current_plan_step.action.upper() == "DEAL_WITH_OBSTACLE")):
                                      ai_comp.current_plan.pop(0)
-                                # current_plan_step.retries = 0 
                                 ai_comp.general_action_retries = 0
                             else: 
                                 logger.warning("[Tick %s][AI Agent %s] LLM future non-action '%s' for plan step '%s'. Incrementing step retries.", tm.tick_counter, entity_id, action_from_llm, current_plan_step.action)
@@ -365,8 +356,7 @@ class AIReasoningSystem:
                 prompt = build_prompt(entity_id, self.world)
                 if role_comp and not role_comp.can_request_abilities:
                     prompt = "\n".join(l for l in prompt.splitlines() if "GENERATE_ABILITY" not in l.upper())
-                if ai_comp.last_error: # Clear general error if we're making a general LLM call
-                    ai_comp.last_error = None
+                if ai_comp.last_error: ai_comp.last_error = None
 
                 returned_value = self.llm.request(prompt, self.world)
                 if PROMPT_ID_PATTERN.match(returned_value):
@@ -407,8 +397,7 @@ class AIReasoningSystem:
                 logger.debug("[Tick %s][AI Agent %s] No action decided, not waiting. Effective idle. Cooldown applies.", tm.tick_counter, entity_id)
                 ai_comp.last_llm_action_tick = tm.tick_counter
             
-            # Moved clearing of last_error to after prompt_builder might use it
-            if ai_comp.last_error:
+            if ai_comp.last_error and not ai_comp.pending_llm_prompt_id: # If error wasn't cleared by a re-prompt for same step
                 ai_comp.last_error = None
 
 
