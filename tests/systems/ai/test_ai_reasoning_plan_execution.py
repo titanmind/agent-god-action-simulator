@@ -1,5 +1,6 @@
 import sys
 from pathlib import Path
+import asyncio
 
 sys.path.append(str(Path(__file__).resolve().parents[2]))
 
@@ -85,7 +86,7 @@ def test_deal_with_obstacle_prompt_sent():
     ai_sys = AIReasoningSystem(world, world.llm_manager_instance, world.raw_actions_with_actor)
 
     agent = world.entity_manager.create_entity()
-    step = ActionStep(action="WAIT", step_type="DEAL_WITH_OBSTACLE", parameters={"obstacle": "(1,1)", "goal": "2,2"})
+    step = ActionStep(action="WAIT", step_type="DEAL_WITH_OBSTACLE", parameters={"coords": (1, 1), "goal": "2,2"})
     ai_state = AIState(personality="t", current_plan=[step])
     world.component_manager.add_component(agent, ai_state)
 
@@ -93,4 +94,41 @@ def test_deal_with_obstacle_prompt_sent():
     ai_sys.update(0)
 
     assert llm.last_prompt is not None
-    assert "Obstacle at (1,1) blocks your path to 2,2" in llm.last_prompt
+    assert "Obstacle at (1, 1) blocks your path" in llm.last_prompt
+
+
+class PendingLLM:
+    mode = "live"
+
+    def __init__(self) -> None:
+        self.agent_decision_model = "test-model"
+        self.prompt_id = "b" * 32
+
+    def request(self, prompt: str, world: World) -> str:
+        fut = asyncio.Future()
+        # Intentionally do not set a result so the future remains pending
+        world.async_llm_responses[self.prompt_id] = fut
+        return self.prompt_id
+
+
+def test_bt_skipped_while_waiting_for_llm():
+    llm = PendingLLM()
+    world = _setup_world()
+    world.llm_manager_instance = llm
+    ai_sys = AIReasoningSystem(world, llm, world.raw_actions_with_actor)
+
+    agent = world.entity_manager.create_entity()
+    step = ActionStep(
+        action="WAIT",
+        step_type="DEAL_WITH_OBSTACLE",
+        parameters={"coords": (1, 1), "goal": "(2,2)"},
+    )
+    ai_state = AIState(personality="t", current_plan=[step])
+    world.component_manager.add_component(agent, ai_state)
+
+    world.time_manager.tick_counter = 0
+    ai_sys.update(0)
+
+    assert list(world.action_queue._queue) == []
+    assert world.raw_actions_with_actor == []
+    assert ai_state.pending_llm_prompt_id == llm.prompt_id

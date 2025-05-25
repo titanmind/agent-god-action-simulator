@@ -9,7 +9,8 @@ from agent_world.core.component_manager import ComponentManager
 from agent_world.core.time_manager import TimeManager
 from agent_world.core.components.ai_state import AIState
 from agent_world.core.components.role import RoleComponent
-from agent_world.systems.ai.ai_reasoning_system import AIReasoningSystem
+from agent_world.systems.ai.ai_reasoning_system import AIReasoningSystem, RawActionCollector
+from agent_world.systems.ai.actions import ActionQueue
 
 
 class DummyLLM:
@@ -29,7 +30,8 @@ def _setup_world(llm: DummyLLM) -> World:
     world.time_manager = TimeManager()
     world.llm_manager_instance = llm
     world.async_llm_responses = {}
-    world.raw_actions_with_actor = []
+    world.action_queue = ActionQueue()
+    world.raw_actions_with_actor = RawActionCollector(world.action_queue)
     return world
 
 

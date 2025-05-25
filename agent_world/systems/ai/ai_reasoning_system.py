@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 COOLDOWN_TICKS = 10 # How many ticks an agent waits after an LLM action before requesting another
 
-from ...core.components.ai_state import AIState
+from ...core.components.ai_state import AIState, ActionStep
 from ...ai.llm.prompt_builder import build_prompt
 from ...ai.llm.llm_manager import LLMManager
 from ...core.components.role import RoleComponent
@@ -80,7 +80,13 @@ class AIReasoningSystem:
                 return (x, y)
         return None
 
-    def _contextualize_generate_ability(self, action_text: str, ai_comp: AIState, entity_id: int) -> str:
+    def _contextualize_generate_ability(
+        self,
+        action_text: str,
+        ai_comp: AIState,
+        entity_id: int,
+        current_step: ActionStep | None = None,
+    ) -> str:
         """Ensure GENERATE_ABILITY descriptions mention relevant obstacle context."""
         if not action_text.upper().startswith("GENERATE_ABILITY"):
             return action_text
@@ -99,19 +105,23 @@ class AIReasoningSystem:
         obs_coords: Tuple[int, int] | None = None
         goal_target_display: Any = None # For logging/description
 
-        # Try to get context from the current plan step if it's about an obstacle
-        if ai_comp.current_plan: # This check might be redundant if called after popping, but good for safety
-            # This logic assumes the current step *being processed* is the one related to GENERATE_ABILITY.
-            # If GENERATE_ABILITY is a *result* of a DEAL_WITH_OBSTACLE step,
-            # then the current_plan might be empty or on the next step.
-            # This function might need to look at the *previously processed* step,
-            # or have the obstacle context passed to it.
-            # For now, let's assume the LLM prompt for GENERATE_ABILITY was formed
-            # when DEAL_WITH_OBSTACLE was the active step.
-
-            # Simplified: If the LLM decides to GENERATE_ABILITY, it should have gotten context
-            # from the prompt. We look for general path blockage if no specific plan step context.
-            pass # Placeholder for more specific plan step context if available
+        # Try to get context from the provided plan step if available
+        step = current_step or (ai_comp.current_plan[0] if ai_comp.current_plan else None)
+        if step and (step.step_type or step.action).upper() in {"DEAL_WITH_OBSTACLE", "GENERATE_ABILITY_FOR_OBSTACLE"}:
+            coords = (
+                step.parameters.get("coords")
+                or step.parameters.get("coords_str")
+                or step.parameters.get("obstacle_ref")
+            )
+            if isinstance(coords, tuple) and len(coords) == 2:
+                obs_coords = coords
+            elif isinstance(coords, str):
+                try:
+                    parts = coords.strip("() ").split(",")
+                    obs_coords = (int(parts[0]), int(parts[1]))
+                except Exception:
+                    obs_coords = None
+            goal_target_display = step.parameters.get("goal") or step.target
 
         # If no specific plan context, check general path to current goal
         if obs_coords is None:
@@ -255,6 +265,7 @@ class AIReasoningSystem:
             llm_attempt_made_or_resolved_this_cycle = False 
             
             plan_step_processed_this_cycle = False
+            step_being_processed: ActionStep | None = None
 
             if ai_comp.current_plan:
                 step = ai_comp.current_plan[0] # Look at the current step
@@ -281,6 +292,7 @@ class AIReasoningSystem:
                         tm.tick_counter, entity_id, final_action_to_take
                     )
                     # Successfully initiated a plan step. Pop it and reset retries.
+                    step_being_processed = step
                     ai_comp.current_plan.pop(0)
                     ai_comp.plan_step_retries = 0
                     plan_step_processed_this_cycle = True
@@ -304,6 +316,7 @@ class AIReasoningSystem:
                          "[Tick %s][AI Agent %s] Plan step '%s' requires LLM. Context: %s",
                          tm.tick_counter, entity_id, step_type_upper, obstacle_context
                     )
+                    step_being_processed = step
                     # No final_action_to_take yet, let LLM decide.
                     # We set a flag or pass context to the LLM prompter.
                     # The `plan_hint` mechanism in prompt builder might be used or `obstacle_prompt`
@@ -358,8 +371,12 @@ class AIReasoningSystem:
                             ai_comp.pending_llm_prompt_id = returned_value
                             logger.debug(
                                 "[Tick %s][AI Agent %s] New LLM request. Prompt ID: %s. Prompt: %s...",
-                                tm.tick_counter, entity_id, ai_comp.pending_llm_prompt_id, prompt[:70]
+                                tm.tick_counter,
+                                entity_id,
+                                ai_comp.pending_llm_prompt_id,
+                                prompt[:70],
                             )
+                            continue  # Wait for async LLM response before BT fallback
                         else: # Immediate valid action
                             final_action_to_take = returned_value
                             logger.info(
@@ -370,15 +387,18 @@ class AIReasoningSystem:
                             if ai_comp.current_plan and plan_step_processed_this_cycle:
                                 logger.debug(
                                     "[Tick %s][AI Agent %s] Consuming plan step %s after immediate LLM action.",
-                                    tm.tick_counter, entity_id, ai_comp.current_plan[0]
+                                    tm.tick_counter,
+                                    entity_id,
+                                    ai_comp.current_plan[0],
                                 )
-                                ai_comp.current_plan.pop(0)
+                                step_being_processed = ai_comp.current_plan.pop(0)
                                 ai_comp.plan_step_retries = 0
                             elif not ai_comp.current_plan and plan_step_processed_this_cycle:
-                                # This case implies a plan step was marked for processing, but the plan became empty.
-                                # This shouldn't happen if logic is correct, but log if it does.
-                                logger.warning("[Tick %s][AI Agent %s] plan_step_processed_this_cycle is true, but current_plan is empty after immediate LLM action.",
-                                               tm.tick_counter, entity_id)
+                                logger.warning(
+                                    "[Tick %s][AI Agent %s] plan_step_processed_this_cycle is true, but current_plan is empty after immediate LLM action.",
+                                    tm.tick_counter,
+                                    entity_id,
+                                )
 
 
                 elif self.llm.mode == "offline": # Will fall through to BT
@@ -400,9 +420,11 @@ class AIReasoningSystem:
                             if ai_comp.current_plan and plan_step_processed_this_cycle:
                                 logger.debug(
                                     "[Tick %s][AI Agent %s] Consuming plan step %s after resolved LLM future.",
-                                    tm.tick_counter, entity_id, ai_comp.current_plan[0]
+                                    tm.tick_counter,
+                                    entity_id,
+                                    ai_comp.current_plan[0],
                                 )
-                                ai_comp.current_plan.pop(0)
+                                step_being_processed = ai_comp.current_plan.pop(0)
                                 ai_comp.plan_step_retries = 0
                             elif not ai_comp.current_plan and plan_step_processed_this_cycle:
                                 logger.warning("[Tick %s][AI Agent %s] plan_step_processed_this_cycle is true, but current_plan is empty after LLM future resolution.",
@@ -426,6 +448,14 @@ class AIReasoningSystem:
                     
                     self.world.async_llm_responses.pop(ai_comp.pending_llm_prompt_id, None)
                     ai_comp.pending_llm_prompt_id = None
+                else:
+                    logger.debug(
+                        "[Tick %s][AI Agent %s] Awaiting LLM response ID %s. Skipping BT this tick.",
+                        tm.tick_counter,
+                        entity_id,
+                        ai_comp.pending_llm_prompt_id,
+                    )
+                    continue
             
             # --- Behavior Tree Fallback ---
             if not final_action_to_take and self.behavior_tree:
@@ -448,7 +478,10 @@ class AIReasoningSystem:
             if final_action_to_take:
                 if final_action_to_take.upper().startswith("GENERATE_ABILITY"):
                     final_action_to_take = self._contextualize_generate_ability(
-                        final_action_to_take, ai_comp, entity_id
+                        final_action_to_take,
+                        ai_comp,
+                        entity_id,
+                        current_step=step_being_processed,
                     )
 
                 logger.info(
@@ -457,15 +490,18 @@ class AIReasoningSystem:
                 )
 
                 # Enqueue parsed Action objects
-                if self.action_queue is None: # One-time fetch if None
-                    self.action_queue = getattr(self.world, "action_queue", None)
-
-                if self.action_queue is not None:
-                    parsed_actions_list = parse_action_string(entity_id, final_action_to_take)
-                    for act_obj in parsed_actions_list:
-                        self.action_queue._queue.append(act_obj)
-                else: # Fallback to raw string list if queue is somehow still None (should not happen)
+                if self._sink_wrapped:
+                    # RawActionCollector handles queuing and logging
                     self.action_tuples_list.append((entity_id, final_action_to_take))
+                else:
+                    if self.action_queue is None:
+                        self.action_queue = getattr(self.world, "action_queue", None)
+                    if self.action_queue is not None:
+                        parsed_actions_list = parse_action_string(entity_id, final_action_to_take)
+                        for act_obj in parsed_actions_list:
+                            self.action_queue._queue.append(act_obj)
+                    else:
+                        self.action_tuples_list.append((entity_id, final_action_to_take))
 
                 ai_comp.last_llm_action_tick = tm.tick_counter # Update cooldown tick
             

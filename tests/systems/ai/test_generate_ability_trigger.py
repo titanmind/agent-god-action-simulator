@@ -48,7 +48,7 @@ def test_contextualize_generate_ability_from_plan_step():
     step = ActionStep(
         action="WAIT",
         step_type="DEAL_WITH_OBSTACLE",
-        parameters={"obstacle": "(2,1)", "goal": "(2,0)"},
+        parameters={"coords": (2, 1), "goal": "(2,0)"},
     )
     ai_state = AIState(personality="bot", current_plan=[step])
     world.component_manager.add_component(agent, ai_state)
@@ -61,7 +61,7 @@ def test_contextualize_generate_ability_from_plan_step():
     assert actor == agent
     assert action.startswith("GENERATE_ABILITY")
     assert "(2,1)" in action
-    assert "(2,0)" in action
+    assert "goal target (2,0)" in action
 
 
 def test_contextualize_generate_ability_general_obstacle():
@@ -86,6 +86,6 @@ def test_contextualize_generate_ability_general_obstacle():
     assert actor == agent
     assert action.startswith("GENERATE_ABILITY")
     assert "(2,1)" in action
-    assert "(2,0)" in action
+    assert "goal target 2" in action
 
     clear_obstacles()
