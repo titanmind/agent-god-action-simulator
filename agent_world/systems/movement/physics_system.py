@@ -49,9 +49,14 @@ class PhysicsSystem:
             if phys is None:
                 continue
 
-            # --- LOGGING: Physics State Before Force ---
-            # print(f"[Tick {current_tick}] PhysicsSystem: Entity {entity_id}, Vel BEFORE force processing: ({phys.vx:.2f},{phys.vy:.2f})")
-            # --- END LOGGING ---
+            # Log state before applying forces
+            logger.debug(
+                "[Tick %s] PhysicsSystem: Entity %s, Vel BEFORE force processing: (%.2f,%.2f)",
+                current_tick,
+                entity_id,
+                phys.vx,
+                phys.vy,
+            )
 
             # Get the Force component (from core.components.force)
             force_comp = cm.get_component(entity_id, Force) 
@@ -75,9 +80,14 @@ class PhysicsSystem:
                 if force_comp.ttl <= 0:
                     cm.remove_component(entity_id, Force) # Consume the force component after applying
             
-            # --- LOGGING: Physics State After Force / Before Collision ---
-            # print(f"[Tick {current_tick}] PhysicsSystem: Entity {entity_id}, Vel AFTER force / BEFORE collision: ({phys.vx:.2f},{phys.vy:.2f})")
-            # --- END LOGGING ---
+            # Log state after forces but before collision resolution
+            logger.debug(
+                "[Tick %s] PhysicsSystem: Entity %s, Vel AFTER force / BEFORE collision: (%.2f,%.2f)",
+                current_tick,
+                entity_id,
+                phys.vx,
+                phys.vy,
+            )
 
             pos = cm.get_component(entity_id, Position)
             if pos is None: # Entity might not have a position, or it's an abstract physical object
@@ -129,9 +139,14 @@ class PhysicsSystem:
             if abs(phys.vx) < 0.01: phys.vx = 0.0
             if abs(phys.vy) < 0.01: phys.vy = 0.0
 
-            # --- LOGGING: Physics State End of Tick ---
-            # print(f"[Tick {current_tick}] PhysicsSystem: Entity {entity_id}, Vel FINAL for tick: ({phys.vx:.2f},{phys.vy:.2f})")
-            # --- END LOGGING ---
+            # Log final velocity after all processing
+            logger.debug(
+                "[Tick %s] PhysicsSystem: Entity %s, Vel FINAL for tick: (%.2f,%.2f)",
+                current_tick,
+                entity_id,
+                phys.vx,
+                phys.vy,
+            )
 
 
 __all__ = ["PhysicsSystem"] # Removed local Force to avoid confusion
