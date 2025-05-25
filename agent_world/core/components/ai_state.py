@@ -4,14 +4,33 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import List, Optional # Added Optional
+from typing import Any, List
+
+
+@dataclass(slots=True)
+class Goal:
+    """Representation of a high level goal for an agent."""
+
+    type: str
+    target: int | None = None
+    conditions: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
+class ActionStep:
+    """Single planned step an agent should take."""
+
+    action: str
+    target: int | None = None
+    parameters: dict[str, Any] = field(default_factory=dict)
 
 @dataclass(slots=True)
 class AIState:
-    """Simple container for an entity's personality and current goals."""
+    """Simple container for an entity's personality, goals and plan."""
 
     personality: str
-    goals: List[str] = field(default_factory=list)
+    goals: List[Goal] = field(default_factory=list)
+    current_plan: List[ActionStep] = field(default_factory=list)
     pending_llm_prompt_id: str | None = None
     last_llm_action_tick: int = -1
     last_bt_direction_index: int = 0 # Index for cycling N, E, S, W
