@@ -41,8 +41,8 @@ def _count_resources(world: Any, kind: str, pos: Tuple[int, int], radius: int) -
     return count
 
 
-def _count_items(world: Any, pos: Tuple[int, int], radius: int) -> int:
-    """Return number of item entities within ``radius`` of ``pos``."""
+def _count_items(world: Any, kind: str, pos: Tuple[int, int], radius: int) -> int:
+    """Return number of item entities of ``kind`` within ``radius`` of ``pos``."""
 
     spatial = getattr(world, "spatial_index", None)
     cm = getattr(world, "component_manager", None)
@@ -52,7 +52,7 @@ def _count_items(world: Any, pos: Tuple[int, int], radius: int) -> int:
     count = 0
     for ent in spatial.query_radius(pos, radius):
         tag = cm.get_component(ent, Tag)
-        if tag is not None and tag.name == "item":
+        if tag is not None and tag.name == kind:
             count += 1
     return count
 
@@ -68,10 +68,10 @@ def get_local_prices(
     prices: Dict[str, float] = {}
 
     for kind, base in BASE_VALUES.items():
-        if kind == "item":
-            supply = _count_items(world, pos, radius)
-        else:
+        if kind in ("ore", "wood", "herbs"):
             supply = _count_resources(world, kind, pos, radius)
+        else:
+            supply = _count_items(world, kind, pos, radius)
         prices[kind] = base / (1 + supply)
 
     return prices
@@ -125,17 +125,31 @@ class TradingSystem:
                 ):
                     continue
 
-                item_a = inv_a.items.pop(0)
-                item_b = inv_b.items.pop(0)
-                inv_a.items.append(item_b)
-                inv_b.items.append(item_a)
-                rel_a = cm.get_component(a, Relationship)
-                if rel_a is not None and hasattr(rel_a, "reputation"):
-                    rel_a.reputation += self.reward
-                rel_b = cm.get_component(b, Relationship)
-                if rel_b is not None and hasattr(rel_b, "reputation"):
-                    rel_b.reputation += self.reward
-                return
+                item_a = inv_a.items[0]
+                item_b = inv_b.items[0]
+
+                tag_a = cm.get_component(item_a, Tag)
+                tag_b = cm.get_component(item_b, Tag)
+                if tag_a is None or tag_b is None:
+                    continue
+
+                prices = get_local_prices(self.world, (pos_a.x, pos_a.y))
+                val_a_current = prices.get(tag_a.name, BASE_VALUES.get(tag_a.name, 1))
+                val_b_current = prices.get(tag_b.name, BASE_VALUES.get(tag_b.name, 1))
+                val_a_potential = prices.get(tag_b.name, BASE_VALUES.get(tag_b.name, 1))
+                val_b_potential = prices.get(tag_a.name, BASE_VALUES.get(tag_a.name, 1))
+
+                # Trade if neither party loses significant value
+                if val_a_potential >= val_a_current and val_b_potential >= val_b_current:
+                    inv_a.items[0] = item_b
+                    inv_b.items[0] = item_a
+                    rel_a = cm.get_component(a, Relationship)
+                    if rel_a is not None and hasattr(rel_a, "reputation"):
+                        rel_a.reputation += self.reward
+                    rel_b = cm.get_component(b, Relationship)
+                    if rel_b is not None and hasattr(rel_b, "reputation"):
+                        rel_b.reputation += self.reward
+                    return
 
 
 __all__ = ["TradingSystem", "get_local_prices"]

@@ -51,7 +51,10 @@ class AIState:
     needs_immediate_rethink: bool = False 
     last_error: str | None = None 
 
-    general_action_retries: int = 0 
+    general_action_retries: int = 0
+
+    plan_step_retries: int = 0
+    last_bt_move_failed: bool = False
     
     max_plan_step_retries: int = 3 
     last_plan_generation_tick: int = -1

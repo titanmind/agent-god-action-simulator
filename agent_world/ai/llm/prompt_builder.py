@@ -19,6 +19,7 @@ from ...core.components.ai_state import AIState
 from ...core.components.role import RoleComponent
 from ...core.components.perception_cache import PerceptionCache
 from ...systems.interaction.pickup import Tag
+from ...systems.interaction.trading import get_local_prices
 from ...systems.movement import pathfinding
 from .llm_manager import LLMManager
 
@@ -129,8 +130,8 @@ def build_prompt(agent_id: int, world: World, *, memory_k: int = 5) -> str:
             if not isinstance(comp_instance, PerceptionCache): agent_components_dict[comp_name] = _normalize(comp_instance)
     agent_specific_world_data["my_components"] = agent_components_dict
     
-    visible_entities_and_items_info_standard = [] 
-    if perception_cache and perception_cache.visible: 
+    visible_entities_and_items_info_standard = []
+    if perception_cache and perception_cache.visible:
         for visible_eid in perception_cache.visible:
             if not em.has_entity(visible_eid): continue
             entity_info: Dict[str, Any] = {"id": visible_eid}
@@ -142,8 +143,30 @@ def build_prompt(agent_id: int, world: World, *, memory_k: int = 5) -> str:
             if v_tag: entity_info["type"] = "item"; entity_info["tag_name"] = v_tag.name 
             if "type" not in entity_info: entity_info["type"] = "unknown_entity"
             visible_entities_and_items_info_standard.append(entity_info)
-    if visible_entities_and_items_info_standard: agent_specific_world_data["visible_entities_and_items"] = sorted(visible_entities_and_items_info_standard, key=lambda x:x.get("id",0))
-    else: agent_specific_world_data["visible_entities_and_items"] = "You see no other entities or items."
+    if visible_entities_and_items_info_standard:
+        agent_specific_world_data["visible_entities_and_items"] = sorted(visible_entities_and_items_info_standard, key=lambda x:x.get("id",0))
+    else:
+        agent_specific_world_data["visible_entities_and_items"] = "You see no other entities or items."
+
+    trade_partners: List[Dict[str, Any]] = []
+    if perception_cache and perception_cache.visible:
+        for visible_eid in perception_cache.visible:
+            if not em.has_entity(visible_eid):
+                continue
+            if cm.get_component(visible_eid, AIState) and cm.get_component(visible_eid, Inventory):
+                inv_other = cm.get_component(visible_eid, Inventory)
+                partner_items: List[str] = []
+                if inv_other:
+                    for item in inv_other.items:
+                        tag = cm.get_component(item, Tag)
+                        if tag:
+                            partner_items.append(tag.name)
+                trade_partners.append({"id": visible_eid, "inventory": partner_items})
+    if trade_partners:
+        agent_specific_world_data["visible_trade_partners"] = trade_partners
+
+    if agent_pos:
+        agent_specific_world_data["local_market_prices"] = get_local_prices(world, (agent_pos.x, agent_pos.y))
 
     _VISITED_OBJECTS_DURING_NORMALIZE = set()
     normalized_view = _normalize(agent_specific_world_data)
