@@ -23,6 +23,7 @@ class ActionStep:
     action: str
     target: int | None = None
     parameters: dict[str, Any] = field(default_factory=dict)
+    step_type: str | None = None
 
 @dataclass(slots=True)
 class AIState:
@@ -37,3 +38,6 @@ class AIState:
     last_bt_move_failed: bool = False # Flag if last BT move resulted in no actual movement (e.g. collision)
     needs_immediate_rethink: bool = False
     last_error: str | None = None
+    plan_step_retries: int = 0
+    max_plan_step_retries: int = 3
+    last_plan_generation_tick: int = -1

@@ -5,6 +5,8 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Any, List
 
+# ``ActionStep`` includes an optional ``step_type`` field used by planners in
+# Phase 11.5 and later.
 from ...core.components.ai_state import Goal, ActionStep
 
 
