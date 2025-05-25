@@ -127,13 +127,11 @@ def bootstrap(config_path: str | Path = Path("config.yaml")) -> World:
     view_radius = int(perception_cfg.get("view_radius", 10))
     perception_sys = VisibilityPerceptionSystem(world, view_radius=view_radius)
     event_perception_sys = EventPerceptionSystem(world)
-    combat_event_log: list[dict[str, Any]] = []
-    combat_sys = CombatSystem(world, event_log=combat_event_log) # Renamed
+    combat_sys = CombatSystem(world)  # Renamed
     pickup_sys = PickupSystem(world) # Renamed
     trading_sys = TradingSystem(world) # Renamed
     stealing_sys = StealingSystem(world) # Renamed
-    crafting_event_log: list[dict[str, Any]] = []
-    crafting_sys = CraftingSystem(world, event_log=crafting_event_log) # Renamed
+    crafting_sys = CraftingSystem(world)  # Renamed
     ability_sys = AbilitySystem(world) # Renamed
     ai_reasoning_sys = AIReasoningSystem(world, world.llm_manager_instance, world.raw_actions_with_actor) # Renamed
 

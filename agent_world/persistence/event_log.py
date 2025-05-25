@@ -13,6 +13,9 @@ import yaml
 LLM_REQUEST = "LLM_REQUEST"
 LLM_RESPONSE = "LLM_RESPONSE"
 ANGEL_ACTION = "ANGEL_ACTION"
+COMBAT_ATTACK = "COMBAT_ATTACK"
+COMBAT_DEATH = "COMBAT_DEATH"
+CRAFT = "CRAFT"
 
 
 def _log_retention_bytes() -> int:
@@ -100,4 +103,7 @@ __all__ = [
     "LLM_REQUEST",
     "LLM_RESPONSE",
     "ANGEL_ACTION",
+    "COMBAT_ATTACK",
+    "COMBAT_DEATH",
+    "CRAFT",
 ]
