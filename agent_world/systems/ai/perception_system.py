@@ -10,7 +10,7 @@ from ...core.events import AbilityUseEvent
 import agent_world.systems.ability.ability_system as ability_mod
 
 
-class PerceptionSystem:
+class EventPerceptionSystem:
     """Deliver :class:`AbilityUseEvent`s to nearby agents."""
 
     def __init__(self, world: Any, event_queue: List[AbilityUseEvent] | None = None) -> None:
@@ -48,4 +48,4 @@ class PerceptionSystem:
                 log.recent.append(event)
 
 
-__all__ = ["PerceptionSystem"]
+__all__ = ["EventPerceptionSystem"]

@@ -4,7 +4,7 @@ from agent_world.core.component_manager import ComponentManager
 from agent_world.core.components.perception_cache import PerceptionCache
 from agent_world.core.components.event_log import EventLog
 from agent_world.core.events import AbilityUseEvent
-from agent_world.systems.ai.perception_system import PerceptionSystem
+from agent_world.systems.ai.perception_system import EventPerceptionSystem
 import agent_world.systems.ability.ability_system as ability_mod
 
 
@@ -31,7 +31,7 @@ def test_events_visible_agents_receive(monkeypatch):
     events: list[AbilityUseEvent] = []
     monkeypatch.setattr(ability_mod, "GLOBAL_ABILITY_EVENT_QUEUE", events, False)
 
-    system = PerceptionSystem(world)
+    system = EventPerceptionSystem(world)
 
     events.append(AbilityUseEvent(caster_id=caster, ability_name="Fireball", target_id=None, tick=1))
     system.update(1)
