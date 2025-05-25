@@ -379,8 +379,8 @@ Outline:
 
   llm:
     # ... existing ...
-    agent_decision_model: "default/model"     # Placeholder, actual model ID can vary
-    angel_generation_model: "default/model"   # Placeholder
+    agent_decision_model: "google/gemini-flash-1.5-8b"     # Placeholder, actual model ID can vary
+    angel_generation_model: "google/gemini-flash-1.5-8b"   # Placeholder
 
   # paths: # Uncomment if paths section is created
     # abilities_vault: "./agent_world/abilities/vault" # Actual path

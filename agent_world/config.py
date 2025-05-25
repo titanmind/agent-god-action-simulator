@@ -27,8 +27,8 @@ class LLMConfig:
     """Configuration for LLM integration."""
 
     mode: str = "offline"
-    agent_decision_model: str = "default/model"
-    angel_generation_model: str = "default/model"
+    agent_decision_model: str = "google/gemini-flash-1.5-8b"
+    angel_generation_model: str = "google/gemini-flash-1.5-8b"
 
 @dataclass
 class LoggingConfig:
@@ -68,8 +68,8 @@ def _parse_config(data: dict[str, Any]) -> Config:
     llm_data = data.get("llm", {})
     llm = LLMConfig(
         mode=llm_data.get("mode", "offline"),
-        agent_decision_model=llm_data.get("agent_decision_model", "default/model"),
-        angel_generation_model=llm_data.get("angel_generation_model", "default/model"),
+        agent_decision_model=llm_data.get("agent_decision_model", "google/gemini-flash-1.5-8b"),
+        angel_generation_model=llm_data.get("angel_generation_model", "google/gemini-flash-1.5-8b"),
     )
 
     paths = data.get("paths")
