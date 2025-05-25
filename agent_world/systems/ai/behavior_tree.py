@@ -4,11 +4,14 @@
 from __future__ import annotations
 
 from typing import Any, Callable, List, Optional
+import logging
 # No longer need Position from here directly for this simplified BT
 from ...core.components.ai_state import AIState 
 
 # Order of exploration for Behavior Tree
 BT_EXPLORE_DIRECTIONS = ["N", "E", "S", "W"] # Cycle: N, E, S, W
+
+logger = logging.getLogger(__name__)
 
 class Node:
     """Base behavior tree node."""
@@ -70,8 +73,8 @@ def fallback_explore_action(agent_id: int, world: Any) -> Optional[str]:
     if ai_state is None:
         # This should ideally not happen for NPCs that are supposed to have AIState
         # If it does, we'll just pick 'N' to avoid errors, but it's a sign of setup issue.
-        print(f"[BT Warning] Agent {agent_id} missing AIState, defaulting BT to MOVE N.")
-        return "MOVE N" 
+        logger.warning("[BT] Agent %s missing AIState, defaulting BT to MOVE N.", agent_id)
+        return "MOVE N"
 
     # Get current direction based on index
     direction = BT_EXPLORE_DIRECTIONS[ai_state.last_bt_direction_index]

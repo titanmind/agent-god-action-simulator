@@ -5,11 +5,14 @@ from __future__ import annotations
 
 # from dataclasses import dataclass # Force is defined in core.components.force
 from typing import Any, Dict, List
+import logging
 
 from .pathfinding import is_blocked
 from ...core.components.position import Position
 from ...core.components.physics import Physics
 from ...core.components.force import Force # Import Force from components
+
+logger = logging.getLogger(__name__)
 
 
 # @dataclass # This local Force definition is shadowed by the imported one if not careful
@@ -53,9 +56,14 @@ class PhysicsSystem:
             # Get the Force component (from core.components.force)
             force_comp = cm.get_component(entity_id, Force) 
             if force_comp is not None:
-                # --- LOGGING: Processing Force ---
-                print(f"[Tick {current_tick}] PhysicsSystem: Entity {entity_id} processing Force({force_comp.dx},{force_comp.dy}), mass={phys.mass}")
-                # --- END LOGGING ---
+                logger.debug(
+                    "[Tick %s] PhysicsSystem: Entity %s processing Force(%s,%s), mass=%s",
+                    current_tick,
+                    entity_id,
+                    force_comp.dx,
+                    force_comp.dy,
+                    phys.mass,
+                )
                 
                 # Apply impulse: dv = F*dt / m. Since dt=1 tick, dv = F/m.
                 # If force_comp.dx/dy are considered impulses (change in momentum), then dv = impulse / m.
@@ -92,9 +100,13 @@ class PhysicsSystem:
                 next_y_int < 0 or next_y_int >= height or
                 is_blocked((next_x_int, next_y_int)) # Check against discrete grid for blockages
             ):
-                # --- LOGGING: Collision ---
-                print(f"[Tick {current_tick}] PhysicsSystem: Entity {entity_id} COLLIDED. Proposed next_pos_int ({next_x_int},{next_y_int}). Zeroing velocity.")
-                # --- END LOGGING ---
+                logger.debug(
+                    "[Tick %s] PhysicsSystem: Entity %s COLLIDED. Proposed next_pos_int (%s,%s). Zeroing velocity.",
+                    current_tick,
+                    entity_id,
+                    next_x_int,
+                    next_y_int,
+                )
                 phys.vx = 0.0
                 phys.vy = 0.0
                 collision = True

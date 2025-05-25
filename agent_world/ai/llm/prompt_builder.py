@@ -10,6 +10,7 @@ from typing import Any, List, Set, Dict, Optional
 
 import threading
 import asyncio
+import logging
 
 from ...core.world import World
 from ...core.components.position import Position
@@ -21,7 +22,9 @@ from ...core.components.perception_cache import PerceptionCache
 from ...systems.interaction.pickup import Tag
 from .llm_manager import LLMManager
 from ...systems.ability.ability_system import AbilitySystem
-from ...systems.movement.pathfinding import is_blocked 
+from ...systems.movement.pathfinding import is_blocked
+
+logger = logging.getLogger(__name__)
 
 _VISITED_OBJECTS_DURING_NORMALIZE: Set[int] = set()
 
@@ -78,12 +81,12 @@ def build_prompt(agent_id: int, world: World, *, memory_k: int = 5) -> str:
     agent_inventory: Optional[Inventory] = cm.get_component(agent_id, Inventory)
 
     # +++ DEBUG BLOCK for Agent 2 Goals +++
-    if agent_id == 2 and tm: # Check tm exists for tick_counter
-        print(f"[[[[[[[[[[ DEBUG AGENT 2 in build_prompt (Tick {tm.tick_counter}) ]]]]]]]]]]")
+    if agent_id == 2 and tm:
+        logger.debug("DEBUG AGENT 2 in build_prompt (Tick %s)", tm.tick_counter)
         if agent_ai_state:
-            print(f"[[[[[ Agent 2 AIState object ID: {id(agent_ai_state)}, Goals RAW: {agent_ai_state.goals} ]]]]]")
+            logger.debug("Agent 2 AIState object ID: %s, Goals RAW: %s", id(agent_ai_state), agent_ai_state.goals)
         else:
-            print(f"[[[[[ Agent 2 AIState is None in build_prompt ]]]]]")
+            logger.debug("Agent 2 AIState is None in build_prompt")
     # +++ END DEBUG BLOCK +++
 
     current_pos_str = f"({agent_pos.x}, {agent_pos.y})" if agent_pos else "Unknown"
@@ -205,9 +208,12 @@ Available actions for THIS CRITICAL SITUATION:
 
 Your Action to address the CRITICAL SITUATION:"""
         current_tick_for_log = tm.tick_counter if tm else "N/A"
-        print(f"\n--- [PromptBuilder Agent {agent_id} Tick {current_tick_for_log}] FULL CRITICAL PROMPT SENT ---")
-        print(prompt)
-        print("--- END FULL CRITICAL PROMPT ---\n")
+        logger.debug(
+            "\n--- [PromptBuilder Agent %s Tick %s] FULL CRITICAL PROMPT SENT ---\n%s\n--- END FULL CRITICAL PROMPT ---\n",
+            agent_id,
+            current_tick_for_log,
+            prompt,
+        )
         return prompt
 
     # --- If not a critical situation, build the standard prompt ---
@@ -319,9 +325,12 @@ Your Action to address the CRITICAL SITUATION:"""
 {action_list_text}
 Based on your GOALS and current situation, what is Your Action:"""
     current_tick_for_log = tm.tick_counter if tm else "N/A"
-    print(f"\n--- [PromptBuilder Agent {agent_id} Tick {current_tick_for_log}] FULL STANDARD PROMPT SENT ---")
-    print(prompt)
-    print("--- END FULL STANDARD PROMPT ---\n")
+    logger.debug(
+        "\n--- [PromptBuilder Agent %s Tick %s] FULL STANDARD PROMPT SENT ---\n%s\n--- END FULL STANDARD PROMPT ---\n",
+        agent_id,
+        current_tick_for_log,
+        prompt,
+    )
         
     return prompt
 
