@@ -664,5 +664,6 @@ Outline:
     • Update event logging section to reflect unified persistent logging.
     • Clarify the role of `RestrictedPython` if its non-use for Angel's conceptual testing is now the clear state.
     • Remove any mentions of `PLAYER_ID`.
+    - Identify any other items in the code that do not align with the design as well, and update them
 
 This Phase 9 aims to significantly improve the codebase's health, align it more closely with the PDD where appropriate at this stage, and prepare it for the more complex feature work required to fully realize the "vFuture" vision.
