@@ -1,4 +1,3 @@
-
 # agent-god-action-simulator/agent_world/main.py
 """World bootstrap and minimal tick loop."""
 
@@ -27,7 +26,8 @@ from .core.systems_manager import SystemsManager
 from .systems.movement.physics_system import PhysicsSystem
 from .systems.movement.movement_system import MovementSystem
 from .systems.perception.perception_system import PerceptionSystem as VisibilityPerceptionSystem
-from .systems.ai.perception_system import PerceptionSystem as EventPerceptionSystem
+# Line 30: Corrected import
+from .systems.ai.perception_system import EventPerceptionSystem
 from .systems.combat.combat_system import CombatSystem
 from .systems.interaction.pickup import PickupSystem
 from .systems.interaction.trading import TradingSystem
