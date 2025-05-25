@@ -6,12 +6,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any, Dict, List
+import logging
 
 from .pathfinding import is_blocked
 
 from ...core.components.position import Position
 from ...core.components.physics import Physics
 from ...core.components.ai_state import AIState # <<< ADDED for last_bt_move_failed
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -79,16 +82,33 @@ class MovementSystem:
             move_blocked = False
             if not (0 <= new_x < world_width and 0 <= new_y < world_height):
                 move_blocked = True
-                # print(f"[Tick {tick}] MovementSystem: Entity {entity_id} blocked by boundary.")
+                logger.warning(
+                    "[Tick %s] MovementSystem: Entity %s blocked by boundary",
+                    tick,
+                    entity_id,
+                )
             elif is_blocked((new_x, new_y)):
                 move_blocked = True
-                # print(f"[Tick {tick}] MovementSystem: Entity {entity_id} blocked by static obstacle at ({new_x},{new_y}).")
+                logger.debug(
+                    "[Tick %s] MovementSystem: Entity %s blocked by static obstacle at (%s,%s)",
+                    tick,
+                    entity_id,
+                    new_x,
+                    new_y,
+                )
             else:
                 occupants_at_target = index.query_radius((new_x, new_y), 0)
                 is_occupied_by_other = any(occ_id != entity_id for occ_id in occupants_at_target)
                 if is_occupied_by_other:
                     move_blocked = True
-                    # print(f"[Tick {tick}] MovementSystem: Entity {entity_id} blocked by other entity at ({new_x},{new_y}). Occupants: {occupants_at_target}")
+                    logger.info(
+                        "[Tick %s] MovementSystem: Entity %s blocked by other entity at (%s,%s). Occupants: %s",
+                        tick,
+                        entity_id,
+                        new_x,
+                        new_y,
+                        occupants_at_target,
+                    )
                     if self.event_log is not None:
                         self.event_log.append({
                             "type": "move_blocked_by_entity", "entity": entity_id,
@@ -99,7 +119,11 @@ class MovementSystem:
             if move_blocked:
                 if ai_state:
                     ai_state.last_bt_move_failed = True
-                    # print(f"[Tick {tick}] MovementSystem: Entity {entity_id} AIState.last_bt_move_failed set to True.")
+                    logger.debug(
+                        "[Tick %s] MovementSystem: Entity %s move failed; AIState.last_bt_move_failed set to True",
+                        tick,
+                        entity_id,
+                    )
                 # If movement from physics was blocked, PhysicsSystem should handle zeroing vx/vy.
                 # If from Velocity comp, this just prevents the move.
                 continue # Don't update position
@@ -107,13 +131,24 @@ class MovementSystem:
             # If all checks pass, update position
             pos.x = new_x
             pos.y = new_y
-            if ai_state: # Successful move
+            if ai_state:  # Successful move
                 ai_state.last_bt_move_failed = False
-                # print(f"[Tick {tick}] MovementSystem: Entity {entity_id} successful move. AIState.last_bt_move_failed set to False.")
+                logger.debug(
+                    "[Tick %s] MovementSystem: Entity %s successful move. AIState.last_bt_move_failed set to False",
+                    tick,
+                    entity_id,
+                )
 
 
             if original_pos_tuple != (pos.x, pos.y):
-                # print(f"[Tick {tick}] MovementSystem: Entity {entity_id} MOVED from {original_pos_tuple} to ({pos.x},{pos.y})")
+                logger.debug(
+                    "[Tick %s] MovementSystem: Entity %s moved from %s to (%s,%s)",
+                    tick,
+                    entity_id,
+                    original_pos_tuple,
+                    pos.x,
+                    pos.y,
+                )
                 batch_updates_for_spatial_index.append((entity_id, (pos.x, pos.y)))
 
         if batch_updates_for_spatial_index:
