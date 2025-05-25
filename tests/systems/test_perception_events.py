@@ -33,11 +33,18 @@ def test_events_visible_agents_receive(monkeypatch):
 
     system = EventPerceptionSystem(world)
 
-    events.append(AbilityUseEvent(caster_id=caster, ability_name="Fireball", target_id=None, tick=1))
+    event = AbilityUseEvent(caster_id=caster, ability_name="Fireball", target_id=None, tick=1)
+    events.append(event)
     system.update(1)
 
     log_obs = world.component_manager.get_component(observer, EventLog)
     assert log_obs.recent and log_obs.recent[0].ability_name == "Fireball"
 
+    cache_obs = world.component_manager.get_component(observer, PerceptionCache)
+    assert cache_obs.visible_ability_uses and cache_obs.visible_ability_uses[0] == event
+
     log_other = world.component_manager.get_component(other, EventLog)
     assert not log_other.recent
+
+    cache_other = world.component_manager.get_component(other, PerceptionCache)
+    assert cache_other.visible_ability_uses == []
