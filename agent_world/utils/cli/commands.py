@@ -13,7 +13,6 @@ from ...core.components.ai_state import AIState # For spawning NPCs with AI
 from ...core.components.physics import Physics # For spawning NPCs with Physics
 from ...core.components.perception_cache import PerceptionCache # <<< ADDED
 from ...systems.interaction.pickup import Tag
-from ...systems.ai.actions import PLAYER_ID
 from ...core.components.role import RoleComponent
 from ...core.components.known_abilities import KnownAbilitiesComponent
 import yaml
@@ -190,13 +189,6 @@ def spawn(world: Any, kind: str, x_str: str | None = None, y_str: str | None = N
 
     spatial_index.insert(ent_id, (x, y))
 
-    if cm and not cm.get_component(PLAYER_ID, Position) and em.has_entity(PLAYER_ID):
-        player_default_pos = (world.size[0] // 2 -1 , world.size[1] // 2) if hasattr(world, 'size') else (-1,0)
-        cm.add_component(PLAYER_ID, Position(*player_default_pos))
-        if not cm.get_component(PLAYER_ID, Physics):
-            cm.add_component(PLAYER_ID, Physics(mass=1.0, vx=0.0, vy=0.0, friction=0.95))
-        spatial_index.insert(PLAYER_ID, player_default_pos)
-        # print(f"PLAYER_ID ({PLAYER_ID}) Position and Physics components ensured at {player_default_pos}.") # Can be verbose
     return ent_id
 
 
