@@ -9,6 +9,11 @@ from typing import Any, Dict, Iterator, List
 
 import yaml
 
+# Event type constants used by various systems
+LLM_REQUEST = "LLM_REQUEST"
+LLM_RESPONSE = "LLM_RESPONSE"
+ANGEL_ACTION = "ANGEL_ACTION"
+
 
 def _log_retention_bytes() -> int:
     """Return log rotation threshold in bytes from ``config.yaml``."""
@@ -88,4 +93,11 @@ class EventLog:
         yield from iter_events(self.path)
 
 
-__all__ = ["EventLog", "append_event", "iter_events"]
+__all__ = [
+    "EventLog",
+    "append_event",
+    "iter_events",
+    "LLM_REQUEST",
+    "LLM_RESPONSE",
+    "ANGEL_ACTION",
+]

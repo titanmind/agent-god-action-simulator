@@ -14,6 +14,11 @@ import json # For pretty printing JSON response
 
 import httpx
 import yaml
+from ...persistence.event_log import (
+    append_event,
+    LLM_REQUEST,
+    LLM_RESPONSE,
+)
 
 from .cache import LLMCache
 
@@ -90,6 +95,7 @@ class LLMManager:
         )
         self.loop: asyncio.AbstractEventLoop | None = None
         self._processing_thread: threading.Thread | None = None
+        self.world: Any | None = None
 
 
     # ------------------------------------------------------------------
@@ -158,9 +164,22 @@ class LLMManager:
         print(f"[LLMManager DEBUG process_queue_item] Processing prompt_id {prompt_id} from queue.")
         # --- END MODIFIED LOGGING ---
 
-        result = "<wait>" 
-        if self.offline: 
-            if self.mode == "echo": 
+        world = getattr(self, "world", None)
+        if world is not None:
+            dest = getattr(world, "persistent_event_log_path", None)
+            if dest is None:
+                dest = Path("persistent_events.log")
+                world.persistent_event_log_path = dest
+            tick = getattr(getattr(world, "time_manager", None), "tick_counter", 0)
+            try:
+                append_event(dest, tick, LLM_REQUEST, {"prompt_id": prompt_id, "prompt": prompt})
+            except Exception:
+                pass
+
+        raw_response_text = None
+        result = "<wait>"
+        if self.offline:
+            if self.mode == "echo":
                 lines = [ln.strip() for ln in prompt.splitlines() if ln.strip()]
                 result = lines[-1] if lines else ""
         else: 
@@ -235,6 +254,14 @@ class LLMManager:
         # --- MODIFIED LOGGING: Full result string, newlines replaced for console readability ---
         print(f"[LLMManager DEBUG process_queue_item] Result for prompt_id {prompt_id}: '{result.replace(chr(10), '//')}'")
         # --- END MODIFIED LOGGING ---
+
+        if world is not None:
+            response_text = raw_response_text if raw_response_text is not None else result
+            try:
+                append_event(dest, tick, LLM_RESPONSE, {"prompt_id": prompt_id, "response": response_text})
+            except Exception:
+                pass
+
         self.cache.put(prompt, result)
         if not fut.done():
             fut.set_result(result)
@@ -247,6 +274,8 @@ class LLMManager:
 
     def start_processing_loop(self, world_ref: Any) -> None:
         """Run queue processing in a background thread."""
+
+        self.world = world_ref
 
         def _run() -> None:
             self.loop = asyncio.new_event_loop()
