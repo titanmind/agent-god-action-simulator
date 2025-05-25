@@ -345,3 +345,141 @@ Outline:
 • if `ai_state.last_error` present, prepend “SYSTEM NOTE: <reason>” to prompt so agent can react
 
 This phased, stub-first plan respects the Dev-Plan Authoring Guide v4, keeps concurrent tasks file-isolated, and incrementally evolves the codebase from its current state to the fully featured target architecture without merge-conflict pain.
+
+
+## Phase 8 · Foundational Fixes & PDD Alignment
+
+Implement critical bug fixes, align existing components and configurations more closely with the Project Design Document, and enhance core systems for better stability and future replayability.
+
+### Wave 8-S (stub — merge first)
+
+Task 8-S-1
+Developer @dev-alice
+Files allowed:
+└─ agent_world/core/components/perception_cache.py
+└─ agent_world/core/events.py
+└─ tests/core/test_perception_cache_stubs.py
+Outline:
+• Add `visible_ability_uses: list[AbilityUseEvent] = field(default_factory=list)` to `PerceptionCacheComponent` dataclass.
+• Ensure `AbilityUseEvent` is accessible for type hinting.
+• Add basic unit test for the new field's default state in `PerceptionCacheComponent`.
+
+Task 8-S-2
+Developer @dev-bob
+Files allowed:
+└─ config.yaml
+└─ agent_world/main.py
+└─ tests/core/test_config_keys.py
+Outline:
+• Add new keys to `config.yaml` as per PDD Sec 12:
+  ```yaml
+  world:
+    # ... existing ...
+    paused_for_angel_timeout_seconds: 60
+
+  llm:
+    # ... existing ...
+    agent_decision_model: "default/model"     # Placeholder, actual model ID can vary
+    angel_generation_model: "default/model"   # Placeholder
+
+  # paths: # Uncomment if paths section is created
+    # abilities_vault: "./agent_world/abilities/vault" # Actual path
+    # abilities_generated: "./agent_world/abilities/generated"
+    # abilities_builtin: "./agent_world/abilities/builtin"
+  ```
+• Ensure `main.py` bootstrap function can gracefully handle these new keys if present (e.g., log them or store on world if appropriate) but doesn't crash if they are used by other systems not yet updated.
+• Add test to verify `config.yaml` can be loaded and new keys are present with default/expected values.
+
+Task 8-S-3
+Developer @dev-carol
+Files allowed:
+└─ agent_world/main.py
+└─ agent_world/core/world.py
+└─ tests/core/test_world_system_instances.py
+Outline:
+• In `bootstrap()` in `main.py`, ensure `world.combat_system_instance` is set after `CombatSystem` is created and registered.
+• Add a `combat_system_instance: Optional[CombatSystem] = None` field to `World` class for type hinting.
+• Add test to verify `world.combat_system_instance` is populated after bootstrap.
+
+### Wave 8-A (parallel once Wave 8-S merged)
+
+Task 8-A-1
+Developer @dev-dave
+Files allowed:
+└─ agent_world/abilities/builtin/melee_strike.py
+└─ agent_world/abilities/builtin/ranged.py
+└─ tests/abilities/test_combat_system_singleton_use.py
+Outline:
+• Modify `MeleeStrike.execute` and `ArrowShot.execute` to use `world.combat_system_instance.attack(...)` instead of instantiating `CombatSystem(world)`.
+• Ensure `ArrowShot` finds `CombatSystem` via `world.combat_system_instance` or iterates `SystemsManager` to find it and then uses that single instance.
+• Add/update tests to ensure `CombatSystem` is not re-instantiated within ability execution and that attacks still function correctly.
+
+Task 8-A-2
+Developer @dev-ellen
+Files allowed:
+└─ agent_world/systems/ai/perception_system.py
+└─ tests/systems/test_perception_events.py
+Outline:
+• Modify `EventPerceptionSystem.update` (in `agent_world/systems/ai/perception_system.py`) to populate the new `visible_ability_uses` field in `PerceptionCacheComponent` for agents that can perceive an `AbilityUseEvent`.
+• This is in *addition* to populating the `EventLog` component.
+• Update `test_perception_events.py` to verify `PerceptionCacheComponent.visible_ability_uses` is correctly populated.
+
+Task 8-A-3
+Developer @dev-frank
+Files allowed:
+└─ agent_world/ai/llm/llm_manager.py
+└─ agent_world/ai/angel/system.py
+└─ agent_world/persistence/event_log.py
+└─ tests/persistence/test_llm_angel_event_logging.py
+Outline:
+• Modify `LLMManager.process_queue_item` to log full LLM prompts and raw responses using `agent_world.persistence.event_log.append_event` to a world-accessible event log (e.g., `world.persistent_event_log_path`). Create this path/mechanism if it doesn't exist.
+• Modify `AngelSystem.generate_and_grant` to log its key decisions (Vault hit, LLM generation attempt, success/failure, ability granted) using `append_event`.
+• Define new event types (e.g., "LLM_REQUEST", "LLM_RESPONSE", "ANGEL_ACTION") for these logs.
+• Add tests to verify these events are correctly logged.
+
+Task 8-A-4
+Developer @dev-grace
+Files allowed:
+└─ agent_world/main.py
+└─ agent_world/ai/llm/llm_manager.py
+└─ agent_world/systems/ability/ability_system.py
+└─ agent_world/core/world.py
+└─ tests/core/test_config_integration.py
+Outline:
+• Update `LLMManager` to utilize `llm.agent_decision_model` and `llm.angel_generation_model` from `config.yaml` (read via world or directly). Store them as distinct attributes.
+• If `paths.abilities_vault` (etc.) are defined in `config.yaml`, update `AbilitySystem` to respect these paths. Default to current hardcoded paths if config keys are missing.
+• The `paused_for_angel_timeout_seconds` config could be read by `main.py` loop and potentially used to break a pause if Angel system takes too long (logging a warning). This is a simple check for now.
+• Add integration tests to verify that LLMManager uses different models if configured and AbilitySystem loads from configured paths.
+
+Task 8-A-5
+Developer @dev-heidi
+Files allowed:
+└─ agent_world/ai/angel/generator.py
+└─ tests/angel/test_generic_ability_stubs.py
+Outline:
+• Refactor `angel_generator.generate_ability` to remove hardcoded `specific_heal_desc_trigger` and "disintegrate obstacle" logic.
+• The `stub_code` parameter (if provided by AngelSystem's LLM in the future) or a default generic placeholder should be used.
+• The current sophisticated hardcoded stub logic for "disintegrate obstacle" (checking `is_blocked`, `OBSTACLES.discard`) should be removed; the generated ability should be a simpler print statement or a no-op pass, relying on the LLM to generate more complex code if requested.
+• Test that generating abilities with descriptions previously triggering special stubs now results in a generic stub.
+
+### Wave 8-B (serial follow-ups after Wave 8-A)
+
+Task 8-B-1
+Developer @dev-ivan
+Files allowed:
+└─ agent_world/ai/prompt_builder.py
+└─ tests/ai/test_prompt_visible_ability_uses.py
+Outline:
+• Modify `agent_world/ai/prompt_builder.build_prompt` (the one in `agent_world/ai/prompt_builder.py`).
+• If `PerceptionCacheComponent.visible_ability_uses` is now the PDD-aligned source for observed abilities (rather than or in addition to `EventLog.recent`), update the prompt builder to read from it.
+• If `EventLog.recent` remains the primary source for "RECENT EVENTS", this task is a no-op for `prompt_builder.py` but the test should confirm the "RECENT EVENTS" section still works correctly with the changes in `EventPerceptionSystem`.
+• Add/update tests to verify the prompt includes information about observed ability uses, sourced appropriately.
+
+Task 8-B-2
+Developer @dev-alice
+Files allowed:
+└─ tests/integration/test_full_loop_pdd_alignment.py
+Outline:
+• Create a new integration test that verifies several of Phase 8's fixes/alignments working together.
+• For example: an agent uses an ability, another agent perceives it (verifying `PerceptionCacheComponent.visible_ability_uses` and `EventLog` are populated), this perception influences the observing agent's next LLM decision (logged via new event logging), and `config.yaml` settings are respected.
+• This test asserts key PDD-aligned behaviors post-Phase 8.
