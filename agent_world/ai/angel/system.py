@@ -12,6 +12,7 @@ from .vault_index import get_vault_index
 from ...core.components.known_abilities import KnownAbilitiesComponent
 from ...core.components.ai_state import AIState
 from ...persistence.event_log import append_event, ANGEL_ACTION
+from ...utils.sandbox import run_in_sandbox
 
 
 class AngelSystem:
@@ -142,6 +143,15 @@ class AngelSystem:
     ) -> str:
         """Return an LLM prompt for generating ability code."""
         return ""
+
+    # ------------------------------------------------------------------
+    # Conceptual testing stub
+    # ------------------------------------------------------------------
+    def _conceptual_test_generated_code(
+        self, generated_code: str, original_request: str
+    ) -> bool:
+        """Return True if generated code passes conceptual tests."""
+        return True
 
 
 def get_angel_system(world: Any) -> AngelSystem:
