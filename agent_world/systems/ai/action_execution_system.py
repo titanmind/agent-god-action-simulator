@@ -23,6 +23,7 @@ from ...systems.movement.movement_system import Velocity
 from ...ai.angel import generator as angel_generator
 from ...ai.angel.system import get_angel_system
 from ...systems.ability.ability_system import AbilitySystem # <<< For finding AbilitySystem
+from ...core.components.known_abilities import KnownAbilitiesComponent
 
 class ActionExecutionSystem:
     """Consume an :class:`ActionQueue` and enact results."""
@@ -105,11 +106,24 @@ class ActionExecutionSystem:
             # --- HANDLE UseAbilityAction ---
             elif isinstance(action, UseAbilityAction):
                 if ability_system_instance:
-                    success = ability_system_instance.use(action.ability_name, action.actor, action.target_id)
+                    kab = cm.get_component(action.actor, KnownAbilitiesComponent)
+                    if kab is None or action.ability_name not in kab.known_class_names:
+                        print(
+                            f"[Tick {tick}][ActionExec] Agent {action.actor} does not possess ability '{action.ability_name}'."
+                        )
+                        continue
+
+                    success = ability_system_instance.use(
+                        action.ability_name, action.actor, action.target_id
+                    )
                     if success:
-                        print(f"[Tick {tick}][ActionExec] Agent {action.actor} successfully used ability '{action.ability_name}' (Target: {action.target_id}).")
+                        print(
+                            f"[Tick {tick}][ActionExec] Agent {action.actor} successfully used ability '{action.ability_name}' (Target: {action.target_id})."
+                        )
                     else:
-                        print(f"[Tick {tick}][ActionExec] Agent {action.actor} FAILED to use ability '{action.ability_name}' (Target: {action.target_id}). Check cooldown/can_use.")
+                        print(
+                            f"[Tick {tick}][ActionExec] Agent {action.actor} FAILED to use ability '{action.ability_name}' (Target: {action.target_id}). Check cooldown/can_use."
+                        )
                 else:
                     print(f"[Tick {tick}][ActionExec ERROR] AbilitySystem not found. Cannot execute UseAbilityAction for agent {action.actor}.")
 
